@@ -1,0 +1,70 @@
+name: JobPulse 6-Hour Scheduled Job Aggregator
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Ingestion mode (fast or full)'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - fast
+      sources:
+        description: 'Comma-separated source collectors (optional override)'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  sync:
+    name: Run JobPulse Aggregator
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'backend/requirements.txt'
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Execute Collector Pipeline
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FALLBACK_SQLITE_FOR_LOCAL_DEV: false
+          JOBSPY_SITES: ${{ vars.JOBSPY_SITES || 'linkedin,naukri,indeed,glassdoor' }}
+          SEARCH_QUERIES: ${{ vars.SEARCH_QUERIES || 'Software Engineer,Full Stack Developer,Data Analyst,Product Manager,UI UX Designer,Digital Marketing,Business Analyst,Finance Analyst,HR Recruiter' }}
+          SEARCH_LOCATIONS: ${{ vars.SEARCH_LOCATIONS || 'Bengaluru,Pune,Hyderabad,Mumbai,Delhi NCR,Remote' }}
+          COUNTRY_INDEED: 'India'
+          RESULTS_PER_QUERY: 10
+          HOURS_OLD: 72
+          GREENHOUSE_BOARDS: 'stripe,gitlab,figma,airbnb,databricks,razorpay,browserstack,postman,phonepe,coinbase'
+          LEVER_BOARDS: 'atlassian,plaid,netflix,spotify,meesho'
+          ASHBY_BOARDS: 'linear,ramp,notion,vercel,openai,elevenlabs'
+          SMARTRECRUITERS_BOARDS: 'visa,bosch,publicissapient,wipro'
+          WORKABLE_BOARDS: ${{ vars.WORKABLE_BOARDS || '' }}
+          HIMALAYAS_API_KEY: ${{ secrets.HIMALAYAS_API_KEY }}
+          CAREER_URLS: ${{ vars.CAREER_URLS || '' }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
+          RAPIDAPI_JSEARCH_KEY: ${{ secrets.RAPIDAPI_JSEARCH_KEY }}
+        run: |
+          if [ -n "${{ inputs.sources }}" ]; then
+            python -m app.cli --sources "${{ inputs.sources }}"
+          else
+            python -m app.cli --mode "${{ inputs.mode || 'full' }}"
+          fi

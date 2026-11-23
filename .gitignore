@@ -1,0 +1,25 @@
+# Environment files
+.env
+*.env
+!.env.example
+
+# Python
+backend/.venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.sqlite
+*.db
+
+# Node
+frontend/node_modules/
+node_modules/
+frontend/dist/
+dist/
+
+# OS / Misc
+.DS_Store
+Thumbs.db
+*.log
