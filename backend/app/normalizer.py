@@ -318,6 +318,47 @@ def normalize_location_and_remote(
     return loc_str or "Remote" if is_remote else (loc_str or "Unspecified"), matched_city, is_remote
 
 
+INDIA_CITIES = {
+    "bengaluru", "bangalore", "mumbai", "bombay", "delhi", "new delhi", "delhi ncr",
+    "ncr", "gurgaon", "gurugram", "noida", "hyderabad", "pune", "chennai", "madras",
+    "kolkata", "calcutta", "ahmedabad", "jaipur", "kochi", "cochin", "chandigarh",
+    "indore", "surat", "bhopal", "visakhapatnam", "nagpur", "vadodara"
+}
+
+
+def detect_country(location: Optional[str], city: Optional[str] = None, is_remote: bool = False) -> str:
+    """Classifies job location into standardized country: India, United States, United Kingdom, Germany, Remote, or Global."""
+    loc = (location or "").lower()
+    c = (city or "").lower()
+
+    if (
+        "india" in loc
+        or loc.endswith(" in")
+        or loc.endswith(", in")
+        or ", in," in loc
+        or c in INDIA_CITIES
+        or any(ic in loc for ic in INDIA_CITIES)
+    ):
+        return "India"
+
+    if any(us in loc for us in [
+        "united states", "usa", "u.s.", "u.s.a", "california", "new york", "texas",
+        "washington", "san francisco", "seattle", "austin", "boston", "chicago"
+    ]) or c in ["new york", "san francisco", "seattle", "chicago"]:
+        return "United States"
+
+    if any(uk in loc for uk in ["united kingdom", "london", "england", "scotland", "uk"]) or c == "london":
+        return "United Kingdom"
+
+    if any(de in loc for de in ["germany", "berlin", "munich", "frankfurt", "deutschland"]) or c == "berlin":
+        return "Germany"
+
+    if is_remote or "remote" in loc or c == "remote" or "worldwide" in loc or "anywhere" in loc:
+        return "Remote / Worldwide"
+
+    return "Global"
+
+
 def classify_category(title: Optional[str], description: Optional[str] = None) -> str:
     """Classifies a job into Tech or Non-Tech categories based on title and keywords."""
     title_text = (title or "").lower()

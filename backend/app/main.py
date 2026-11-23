@@ -1,8 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from math import ceil
 from datetime import datetime, timezone
+import httpx
 
 from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,8 +24,10 @@ from app.schemas import (
     SyncStatusResponse,
     HealthResponse,
     ScrapeRunOut,
+    SyncRequest,
+    JobVerifyResponse,
 )
-from app.pipeline import run_ingestion, get_sync_telemetry
+from app.pipeline import run_ingestion, get_sync_telemetry, deactivate_expired_jobs
 
 logger = logging.getLogger("jobpulse")
 logging.basicConfig(level=logging.INFO)
@@ -113,11 +116,14 @@ def get_jobs(
     q: Optional[str] = Query(None, description="Free text search query"),
     category: Optional[str] = Query(None, description="Job category"),
     location: Optional[str] = Query(None, description="Location or city filter"),
+    country: Optional[str] = Query(None, description="Country filter (e.g. India, United States, Remote)"),
+    india_only: Optional[bool] = Query(False, description="Filter for India roles only"),
     company: Optional[str] = Query(None, description="Company name filter"),
     source: Optional[str] = Query(None, description="Source platform name"),
     min_exp: Optional[float] = Query(None, description="Minimum experience required"),
     max_exp: Optional[float] = Query(None, description="Maximum experience required"),
     remote_only: Optional[bool] = Query(False, description="Filter for remote jobs only"),
+    active_only: Optional[bool] = Query(True, description="Filter for active non-expired jobs"),
     saved_only: Optional[bool] = Query(False, description="Filter for bookmarked jobs only"),
     application_status: Optional[str] = Query(None, description="Application tracking status"),
     job_type: Optional[str] = Query(None, description="Job type (Full-time, Contract, etc.)"),
@@ -128,6 +134,10 @@ def get_jobs(
 ):
     """Retrieves paginated, filtered jobs with multi-source listings."""
     query = select(Job)
+
+    # Active jobs only by default (hides expired/removed postings)
+    if active_only:
+        query = query.where(Job.is_active == True)
 
     # Free text search across title, company, description
     if q and q.strip():
@@ -145,6 +155,30 @@ def get_jobs(
 
     if category:
         query = query.where(Job.category == category)
+
+    if country:
+        query = query.where(Job.country.ilike(f"%{country}%"))
+
+    if india_only:
+        india_cities = [
+            "bengaluru", "bangalore", "mumbai", "delhi", "delhi ncr", "gurugram",
+            "gurgaon", "noida", "hyderabad", "pune", "chennai", "kolkata", "ahmedabad", "jaipur"
+        ]
+        query = query.where(
+            or_(
+                Job.country == "India",
+                Job.city.in_(india_cities),
+                Job.location.ilike("%india%"),
+                Job.location.ilike("%bengaluru%"),
+                Job.location.ilike("%hyderabad%"),
+                Job.location.ilike("%pune%"),
+                Job.location.ilike("%mumbai%"),
+                Job.location.ilike("%delhi%"),
+                Job.location.ilike("%gurgaon%"),
+                Job.location.ilike("%noida%"),
+                Job.location.ilike("%chennai%"),
+            )
+        )
 
     if location:
         loc_wild = f"%{location}%"
@@ -245,9 +279,19 @@ def track_job(job_id: int, payload: JobTrackUpdate, db: Session = Depends(get_db
 @app.get("/api/filters", response_model=FiltersResponse)
 def get_filters(db: Session = Depends(get_db)):
     """Computes dynamic facet counts and top-level KPIs for dashboard sidebar and ribbon."""
+    # Countries
+    country_rows = db.execute(
+        select(Job.country, func.count(Job.id))
+        .where(Job.is_active == True, Job.country != None)
+        .group_by(Job.country)
+        .order_by(desc(func.count(Job.id)))
+    ).all()
+    countries = [FacetItem(name=r[0], count=r[1]) for r in country_rows if r[0]]
+
     # Categories
     cat_rows = db.execute(
         select(Job.category, func.count(Job.id))
+        .where(Job.is_active == True)
         .group_by(Job.category)
         .order_by(desc(func.count(Job.id)))
     ).all()
@@ -256,25 +300,28 @@ def get_filters(db: Session = Depends(get_db)):
     # Cities
     city_rows = db.execute(
         select(Job.city, func.count(Job.id))
-        .where(Job.city != None)
+        .where(Job.is_active == True, Job.city != None)
         .group_by(Job.city)
         .order_by(desc(func.count(Job.id)))
-        .limit(20)
+        .limit(25)
     ).all()
     cities = [FacetItem(name=r[0], count=r[1]) for r in city_rows if r[0]]
 
     # Companies
     comp_rows = db.execute(
         select(Job.company, func.count(Job.id))
+        .where(Job.is_active == True)
         .group_by(Job.company)
         .order_by(desc(func.count(Job.id)))
-        .limit(20)
+        .limit(25)
     ).all()
     companies = [FacetItem(name=r[0], count=r[1]) for r in comp_rows if r[0]]
 
     # Sources
     src_rows = db.execute(
         select(JobSource.source_name, func.count(distinct(JobSource.job_id)))
+        .join(Job, Job.id == JobSource.job_id)
+        .where(Job.is_active == True)
         .group_by(JobSource.source_name)
         .order_by(desc(func.count(distinct(JobSource.job_id))))
     ).all()
@@ -283,7 +330,7 @@ def get_filters(db: Session = Depends(get_db)):
     # Job Types
     jt_rows = db.execute(
         select(Job.job_type, func.count(Job.id))
-        .where(Job.job_type != None)
+        .where(Job.is_active == True, Job.job_type != None)
         .group_by(Job.job_type)
         .order_by(desc(func.count(Job.id)))
     ).all()
@@ -291,7 +338,24 @@ def get_filters(db: Session = Depends(get_db)):
 
     # KPIs
     total_jobs = db.query(func.count(Job.id)).scalar() or 0
-    remote_jobs = db.query(func.count(Job.id)).filter(Job.is_remote == True).scalar() or 0
+    active_jobs = db.query(func.count(Job.id)).filter(Job.is_active == True).scalar() or 0
+    india_jobs = (
+        db.query(func.count(Job.id))
+        .filter(
+            Job.is_active == True,
+            or_(
+                Job.country == "India",
+                Job.location.ilike("%india%"),
+                Job.city.in_([
+                    "bengaluru", "bangalore", "mumbai", "delhi", "delhi ncr", "gurugram",
+                    "gurgaon", "noida", "hyderabad", "pune", "chennai", "kolkata", "ahmedabad", "jaipur"
+                ]),
+            ),
+        )
+        .scalar()
+        or 0
+    )
+    remote_jobs = db.query(func.count(Job.id)).filter(Job.is_active == True, Job.is_remote == True).scalar() or 0
     saved_jobs = db.query(func.count(Job.id)).filter(Job.is_saved == True).scalar() or 0
     applied_jobs = (
         db.query(func.count(Job.id))
@@ -300,17 +364,19 @@ def get_filters(db: Session = Depends(get_db)):
         or 0
     )
     active_sources = db.query(func.count(distinct(JobSource.source_name))).scalar() or 0
-
     last_synced_at = db.query(func.max(ScrapeRun.finished_at)).scalar()
 
     return FiltersResponse(
         categories=categories,
         cities=cities,
+        countries=countries,
         companies=companies,
         sources=sources,
         job_types=job_types,
         kpis=KpiMetrics(
             total_jobs=total_jobs,
+            active_jobs=active_jobs,
+            india_jobs=india_jobs,
             remote_jobs=remote_jobs,
             saved_jobs=saved_jobs,
             applied_jobs=applied_jobs,
@@ -318,6 +384,83 @@ def get_filters(db: Session = Depends(get_db)):
             last_synced_at=last_synced_at,
         ),
     )
+
+
+@app.post("/api/jobs/{job_id}/verify", response_model=JobVerifyResponse)
+def verify_job_liveness(job_id: int, db: Session = Depends(get_db)):
+    """Probes the live career URL. If 404, 410, or expired, automatically deactivates the job."""
+    job = db.execute(select(Job).where(Job.id == job_id)).scalars().first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    primary_url = job.sources[0].apply_url if job.sources else None
+    if not primary_url:
+        return JobVerifyResponse(
+            job_id=job_id,
+            is_active=job.is_active,
+            message="No external application URL recorded for verification",
+        )
+
+    try:
+        with httpx.Client(timeout=8.0, follow_redirects=True) as client:
+            resp = client.head(primary_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            if resp.status_code in (405, 403):
+                resp = client.get(primary_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+
+            status_code = resp.status_code
+            if status_code in (404, 410):
+                job.is_active = False
+                job.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                return JobVerifyResponse(
+                    job_id=job_id,
+                    is_active=False,
+                    status_code=status_code,
+                    message="Position closed or page removed (HTTP 404/410). Job automatically marked expired.",
+                )
+            elif status_code < 400:
+                return JobVerifyResponse(
+                    job_id=job_id,
+                    is_active=True,
+                    status_code=status_code,
+                    message="Position verified live and actively accepting applications.",
+                )
+            else:
+                return JobVerifyResponse(
+                    job_id=job_id,
+                    is_active=job.is_active,
+                    status_code=status_code,
+                    message=f"Received HTTP {status_code} from provider.",
+                )
+    except Exception as e:
+        return JobVerifyResponse(
+            job_id=job_id,
+            is_active=job.is_active,
+            message=f"Network probe timed out: {e}",
+        )
+
+
+@app.post("/api/jobs/{job_id}/expire", response_model=JobOut)
+def expire_job(job_id: int, db: Session = Depends(get_db)):
+    """Manually marks a job as expired/closed."""
+    job = db.execute(select(Job).where(Job.id == job_id)).scalars().first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job.is_active = False
+    job.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(job)
+    return JobOut.model_validate(job)
+
+
+@app.post("/api/jobs/cleanup-expired")
+def cleanup_expired_jobs(days: int = Query(45, ge=1), db: Session = Depends(get_db)):
+    """Deactivates jobs older than the specified threshold."""
+    count = deactivate_expired_jobs(db, max_age_days=days)
+    return {
+        "cleaned_count": count,
+        "message": f"Deactivated {count} expired/stale postings older than {days} days.",
+    }
 
 
 @app.get("/api/sync/status", response_model=SyncStatusResponse)
@@ -343,15 +486,36 @@ def get_sync_status(db: Session = Depends(get_db)):
 def trigger_sync(
     background_tasks: BackgroundTasks,
     mode: str = Query("fast", description="Ingestion mode: 'fast' (~10-15s) or 'full' (includes JobSpy)"),
+    payload: Optional[SyncRequest] = None,
 ):
-    """Triggers background data collection with duplicate execution protection."""
+    """
+    Triggers background data collection with duplicate execution protection.
+    Accepts dynamic queries and locations for real-time live harvesting.
+    """
     state = get_sync_telemetry()
     if state.get("is_running"):
         return {"status": "busy", "message": "An ingestion run is already in progress"}
 
-    background_tasks.add_task(run_ingestion, mode=mode)
+    sync_mode = payload.mode if payload and payload.mode else mode
+    queries = payload.queries if payload else None
+    locations = payload.locations if payload else None
+    country = payload.country if payload and payload.country else "India"
+    sources = payload.sources if payload else None
+
+    background_tasks.add_task(
+        run_ingestion,
+        sources=sources,
+        mode=sync_mode,
+        queries=queries,
+        locations=locations,
+        country=country,
+    )
     return {
         "status": "started",
-        "mode": mode,
-        "message": f"Background job ingestion triggered in '{mode}' mode.",
+        "mode": sync_mode,
+        "queries": queries,
+        "locations": locations,
+        "country": country,
+        "sources": sources,
+        "message": f"Background job ingestion triggered in '{sync_mode}' mode.",
     }

@@ -33,6 +33,8 @@ export default function FilterSidebar({
   filtersData,
   selectedCategory,
   onSelectCategory,
+  selectedCountry,
+  onSelectCountry,
   selectedCity,
   onSelectCity,
   selectedCompany,
@@ -43,6 +45,10 @@ export default function FilterSidebar({
   onSelectExp,
   remoteOnly,
   onToggleRemote,
+  indiaOnly,
+  onToggleIndia,
+  activeOnly,
+  onToggleActive,
   onResetFilters,
   activeFilterCount,
 }) {
@@ -50,6 +56,7 @@ export default function FilterSidebar({
   const [compSearch, setCompSearch] = useState('');
 
   const categories = filtersData?.categories || [];
+  const countries = filtersData?.countries || [];
   const cities = (filtersData?.cities || []).filter((c) =>
     c.name.toLowerCase().includes(citySearch.toLowerCase())
   );
@@ -69,7 +76,7 @@ export default function FilterSidebar({
           {activeFilterCount > 0 && (
             <button
               onClick={onResetFilters}
-              className="text-neutral-500 hover:text-neutral-900 flex items-center gap-1 font-medium transition-colors"
+              className="text-[#F26825] hover:text-[#D95B1E] flex items-center gap-1 font-semibold transition-colors"
             >
               <RotateCcw className="w-3 h-3" />
               <span>Reset all</span>
@@ -77,24 +84,73 @@ export default function FilterSidebar({
           )}
         </div>
 
-        {/* Remote Only Toggle */}
-        <div className="flex items-center justify-between py-1">
-          <span className="font-medium text-neutral-800">Remote Only</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={remoteOnly}
-            onClick={() => onToggleRemote(!remoteOnly)}
-            className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-              remoteOnly ? 'bg-[#111827]' : 'bg-neutral-200'
-            }`}
-          >
-            <span
-              className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                remoteOnly ? 'translate-x-4' : 'translate-x-0'
+        {/* Quick Toggles */}
+        <div className="space-y-2">
+          {/* India Roles Quick Toggle */}
+          <div className="flex items-center justify-between p-2 rounded-md bg-orange-50/70 border border-orange-100">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm">🇮🇳</span>
+              <span className="font-semibold text-neutral-900 text-[11px]">India Roles</span>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={indiaOnly}
+              onClick={() => onToggleIndia(!indiaOnly)}
+              className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                indiaOnly ? 'bg-[#F26825]' : 'bg-neutral-200'
               }`}
-            />
-          </button>
+            >
+              <span
+                className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  indiaOnly ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Remote Only Toggle */}
+          <div className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-neutral-50 transition-colors">
+            <span className="font-medium text-neutral-800">Remote Only</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={remoteOnly}
+              onClick={() => onToggleRemote(!remoteOnly)}
+              className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                remoteOnly ? 'bg-[#111827]' : 'bg-neutral-200'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  remoteOnly ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Active Jobs Only (Hide Expired) */}
+          <div className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-neutral-50 transition-colors">
+            <div className="flex items-center gap-1.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${activeOnly ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-300'}`} />
+              <span className="font-medium text-neutral-800">Active Jobs Only</span>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={activeOnly}
+              onClick={() => onToggleActive(!activeOnly)}
+              className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                activeOnly ? 'bg-emerald-600' : 'bg-neutral-200'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  activeOnly ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
         </div>
 
         {/* Experience Chips */}
@@ -120,6 +176,41 @@ export default function FilterSidebar({
             })}
           </div>
         </div>
+
+        {/* Country & Region */}
+        {countries.length > 0 && (
+          <div>
+            <span className="font-medium text-neutral-800 block mb-2">Country</span>
+            <div className="space-y-0.5 max-h-36 overflow-y-auto pr-1">
+              {countries.map((c) => {
+                const isSelected = selectedCountry === c.name;
+                return (
+                  <button
+                    key={c.name}
+                    onClick={() => onSelectCountry(isSelected ? null : c.name)}
+                    className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
+                      isSelected
+                        ? 'bg-neutral-100 font-semibold text-[#111827]'
+                        : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 truncate pr-1">
+                      {c.name === 'India' && <span>🇮🇳</span>}
+                      {c.name === 'United States' && <span>🇺🇸</span>}
+                      {c.name === 'United Kingdom' && <span>🇬🇧</span>}
+                      {c.name === 'Germany' && <span>🇩🇪</span>}
+                      {c.name.includes('Remote') && <span>🌐</span>}
+                      <span className="truncate">{c.name}</span>
+                    </div>
+                    <span className="font-mono text-[10px] text-neutral-400 tabular-nums">
+                      {c.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Department / Category */}
         <div>

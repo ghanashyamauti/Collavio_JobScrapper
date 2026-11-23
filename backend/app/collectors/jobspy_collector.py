@@ -18,6 +18,7 @@ class JobSpyCollector(BaseCollector):
         locations: Optional[List[str]] = None,
         results_per_query: Optional[int] = None,
         hours_old: Optional[int] = None,
+        country_indeed: Optional[str] = None,
     ):
         raw_sites = sites or [s.strip() for s in settings.JOBSPY_SITES.split(",") if s.strip()]
         self.sites = raw_sites or ["linkedin", "naukri", "indeed", "glassdoor"]
@@ -25,7 +26,7 @@ class JobSpyCollector(BaseCollector):
         self.locations = locations or [l.strip() for l in settings.SEARCH_LOCATIONS.split(",") if l.strip()]
         self.results_per_query = results_per_query or settings.RESULTS_PER_QUERY
         self.hours_old = hours_old or settings.HOURS_OLD
-        self.country_indeed = settings.COUNTRY_INDEED
+        self.country_indeed = country_indeed or settings.COUNTRY_INDEED or "India"
         self.proxies = [p.strip() for p in settings.PROXIES.split(",")] if settings.PROXIES else None
 
     def collect(self, max_queries: int = 4) -> List[RawJob]:

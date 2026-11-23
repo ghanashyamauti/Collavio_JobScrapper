@@ -24,7 +24,10 @@ class JobOut(BaseModel):
     category: str
     location: Optional[str] = None
     city: Optional[str] = None
+    country: Optional[str] = None
     is_remote: bool
+    is_active: bool = True
+    expires_at: Optional[datetime] = None
     min_exp: Optional[float] = None
     max_exp: Optional[float] = None
     job_type: Optional[str] = None
@@ -64,6 +67,8 @@ class FacetItem(BaseModel):
 
 class KpiMetrics(BaseModel):
     total_jobs: int
+    active_jobs: int = 0
+    india_jobs: int = 0
     remote_jobs: int
     saved_jobs: int
     applied_jobs: int
@@ -74,10 +79,26 @@ class KpiMetrics(BaseModel):
 class FiltersResponse(BaseModel):
     categories: List[FacetItem]
     cities: List[FacetItem]
+    countries: List[FacetItem] = Field(default_factory=list)
     companies: List[FacetItem]
     sources: List[FacetItem]
     job_types: List[FacetItem]
     kpis: KpiMetrics
+
+
+class SyncRequest(BaseModel):
+    mode: str = "fast"
+    sources: Optional[List[str]] = None
+    queries: Optional[List[str]] = None
+    locations: Optional[List[str]] = None
+    country: Optional[str] = "India"
+
+
+class JobVerifyResponse(BaseModel):
+    job_id: int
+    is_active: bool
+    status_code: Optional[int] = None
+    message: str
 
 
 class ScrapeRunOut(BaseModel):

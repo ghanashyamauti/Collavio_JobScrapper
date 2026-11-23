@@ -120,12 +120,19 @@ export default function JobCard({ job, isSelected, onSelect, onToggleSave }) {
         </button>
       </div>
 
-      {/* Location, Category, Remote Badges */}
-      <div className="flex flex-wrap items-center gap-2 mt-2.5 text-neutral-500">
+      {/* Location, Category, Remote, Country & Active Badges */}
+      <div className="flex flex-wrap items-center gap-1.5 mt-2.5 text-neutral-500">
         <span className="flex items-center gap-1 text-[11px] truncate max-w-[180px]">
           <MapPin className="w-3 h-3 text-neutral-400 shrink-0" />
           <span>{job.city || job.location || 'Unspecified'}</span>
         </span>
+
+        {job.country === 'India' && (
+          <span className="bg-orange-50 text-[#F26825] font-semibold text-[10px] px-1.5 py-0.2 rounded border border-orange-200 flex items-center gap-1">
+            <span>🇮🇳</span>
+            <span>India</span>
+          </span>
+        )}
 
         {job.is_remote && (
           <span className="bg-emerald-50 text-emerald-800 text-[10px] font-medium px-1.5 py-0.2 rounded border border-emerald-200">
@@ -136,6 +143,17 @@ export default function JobCard({ job, isSelected, onSelect, onToggleSave }) {
         <span className="bg-neutral-100 text-neutral-600 text-[10px] font-medium px-1.5 py-0.2 rounded border border-neutral-200">
           {job.category}
         </span>
+
+        {job.is_active ? (
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span>Live</span>
+          </span>
+        ) : (
+          <span className="text-[10px] font-medium text-neutral-500 bg-neutral-100 px-1.5 py-0.2 rounded border border-neutral-200">
+            Expired
+          </span>
+        )}
 
         {statusBadge && (
           <span className={`text-[10px] font-medium px-1.5 py-0.2 rounded border ${statusBadge.color}`}>

@@ -10,6 +10,9 @@ import {
   FileText,
   ChevronDown,
   CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  ShieldCheck,
 } from 'lucide-react';
 
 const STATUS_OPTIONS = [
@@ -26,6 +29,10 @@ export default function JobDetailPane({
   onToggleSave,
   onUpdateTracking,
   isTrackingPending,
+  onVerifyLiveness,
+  onMarkExpired,
+  isVerifying = false,
+  verificationResult = null,
 }) {
   const [notes, setNotes] = useState('');
   const [showNotes, setShowNotes] = useState(false);
@@ -117,19 +124,40 @@ export default function JobDetailPane({
           </div>
 
           {/* Badges strip */}
-          <div className="flex flex-wrap items-center gap-2 mt-3">
+          <div className="flex flex-wrap items-center gap-1.5 mt-3">
             <span className="inline-flex items-center gap-1 text-neutral-600 bg-neutral-100 px-2 py-0.5 rounded text-[11px] font-medium border border-neutral-200">
               <MapPin className="w-3 h-3 text-neutral-400" />
               {job.city || job.location || 'Unspecified'}
             </span>
+
+            {job.country === 'India' && (
+              <span className="bg-orange-50 text-[#F26825] font-semibold text-[11px] px-2 py-0.5 rounded border border-orange-200 flex items-center gap-1">
+                <span>🇮🇳</span>
+                <span>India Role</span>
+              </span>
+            )}
+
             {job.is_remote && (
               <span className="bg-emerald-50 text-emerald-800 text-[11px] font-medium px-2 py-0.5 rounded border border-emerald-200">
                 Remote
               </span>
             )}
+
             <span className="bg-neutral-100 text-neutral-700 text-[11px] font-medium px-2 py-0.5 rounded border border-neutral-200">
               {job.category}
             </span>
+
+            {job.is_active ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Live on Source</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded border border-neutral-200">
+                <AlertTriangle className="w-3 h-3 text-amber-500" />
+                <span>Closed / Expired</span>
+              </span>
+            )}
           </div>
         </div>
 
@@ -211,8 +239,8 @@ export default function JobDetailPane({
           </div>
         </div>
 
-        {/* Direct Apply Multi-Platform Cluster */}
-        <div className="space-y-2">
+        {/* Direct Apply & Live Verification Cluster */}
+        <div className="space-y-2.5">
           {primarySource && (
             <a
               href={primarySource.apply_url}
@@ -223,6 +251,48 @@ export default function JobDetailPane({
               <span>Apply on {primarySource.source_name.toUpperCase()}</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
+          )}
+
+          {/* Liveness Check Actions */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onVerifyLiveness(job.id)}
+              disabled={isVerifying}
+              className="flex-1 py-1.5 px-3 rounded-md border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-700 font-medium text-[11px] transition-colors flex items-center justify-center gap-1.5"
+            >
+              <RefreshCw className={`w-3 h-3 ${isVerifying ? 'animate-spin text-[#F26825]' : 'text-neutral-500'}`} />
+              <span>{isVerifying ? 'Checking URL...' : 'Verify Live Link'}</span>
+            </button>
+
+            {job.is_active && (
+              <button
+                type="button"
+                onClick={() => onMarkExpired(job.id)}
+                title="Mark this job as closed/expired"
+                className="py-1.5 px-2.5 rounded-md border border-neutral-200 bg-white hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-neutral-500 font-medium text-[11px] transition-colors"
+              >
+                Mark Closed
+              </button>
+            )}
+          </div>
+
+          {/* Verification Feedback Pill */}
+          {verificationResult && verificationResult.job_id === job.id && (
+            <div
+              className={`p-2 rounded-md text-[11px] font-medium border flex items-center gap-1.5 ${
+                verificationResult.is_active
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-red-50 text-red-800 border-red-200'
+              }`}
+            >
+              {verificationResult.is_active ? (
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+              )}
+              <span>{verificationResult.message}</span>
+            </div>
           )}
 
           {siblingSources.length > 0 && (

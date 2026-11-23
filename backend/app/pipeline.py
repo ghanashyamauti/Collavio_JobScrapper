@@ -19,6 +19,7 @@ from app.normalizer import (
     normalize_company,
     normalize_title,
     normalize_location_and_remote,
+    detect_country,
     classify_category,
     parse_experience,
     clean_html_description,
@@ -79,6 +80,7 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
         clean_loc, standard_city, is_remote = normalize_location_and_remote(raw.location, raw.title)
         if raw.is_remote:
             is_remote = True
+        country = detect_country(clean_loc, standard_city, is_remote)
 
         clean_desc = clean_html_description(raw.description)
         category = classify_category(raw.title, clean_desc)
@@ -96,6 +98,10 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
 
         if existing_job:
             duplicates_merged += 1
+            existing_job.is_active = True
+            existing_job.updated_at = datetime.now(timezone.utc)
+            if not existing_job.country or existing_job.country == "Global":
+                existing_job.country = country
             _backfill_job_metadata(
                 existing_job, clean_desc, raw.salary_min, raw.salary_max, raw.currency,
                 min_exp, max_exp, is_explicit_exp
@@ -108,6 +114,10 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
         existing_job = existing_jobs_by_fp.get(fingerprint)
         if existing_job:
             duplicates_merged += 1
+            existing_job.is_active = True
+            existing_job.updated_at = datetime.now(timezone.utc)
+            if not existing_job.country or existing_job.country == "Global":
+                existing_job.country = country
             _attach_source_and_backfill(
                 db, existing_job, raw.source_name, raw.external_id, canonical_url,
                 clean_desc, raw.salary_min, raw.salary_max, raw.currency, min_exp, max_exp,
@@ -142,6 +152,10 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
 
         if fuzzy_matched_job:
             duplicates_merged += 1
+            fuzzy_matched_job.is_active = True
+            fuzzy_matched_job.updated_at = datetime.now(timezone.utc)
+            if not fuzzy_matched_job.country or fuzzy_matched_job.country == "Global":
+                fuzzy_matched_job.country = country
             _attach_source_and_backfill(
                 db, fuzzy_matched_job, raw.source_name, raw.external_id, canonical_url,
                 clean_desc, raw.salary_min, raw.salary_max, raw.currency, min_exp, max_exp,
@@ -173,7 +187,9 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
             category=category,
             location=clean_loc,
             city=standard_city,
+            country=country,
             is_remote=is_remote,
+            is_active=True,
             min_exp=min_exp,
             max_exp=max_exp,
             job_type=clean_job_type,
@@ -270,10 +286,34 @@ def _attach_source_and_backfill(
     _backfill_job_metadata(job, description, salary_min, salary_max, currency, min_exp, max_exp, is_explicit_exp)
 
 
-def run_ingestion(sources: Optional[List[str]] = None, mode: str = "full") -> List[Dict[str, Any]]:
+def deactivate_expired_jobs(db: Session, max_age_days: int = 45) -> int:
+    """Marks jobs older than max_age_days without fresh sightings as inactive."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    expired_jobs = db.execute(
+        select(Job).where(Job.is_active == True, Job.posted_at != None, Job.posted_at < cutoff)
+    ).scalars().all()
+    count = 0
+    for j in expired_jobs:
+        j.is_active = False
+        j.updated_at = datetime.now(timezone.utc)
+        count += 1
+    if count:
+        db.commit()
+        logger.info(f"[Pipeline] Marked {count} jobs older than {max_age_days} days as inactive/expired.")
+    return count
+
+
+def run_ingestion(
+    sources: Optional[List[str]] = None,
+    mode: str = "full",
+    queries: Optional[List[str]] = None,
+    locations: Optional[List[str]] = None,
+    country: Optional[str] = "India",
+) -> List[Dict[str, Any]]:
     """
     Main orchestration entrypoint for background or CLI sync.
     Runs collectors, logs ScrapeRun records, and manages the ingestion lock.
+    Supports dynamic queries and locations for live targeted harvesting.
     """
     if not _ingestion_lock.acquire(blocking=False):
         logger.warning("[Pipeline] Ingestion is already running in another thread, skipping.")
@@ -293,7 +333,9 @@ def run_ingestion(sources: Optional[List[str]] = None, mode: str = "full") -> Li
         if sources:
             source_set = set(s.strip().lower() for s in sources)
             if "jobspy" in source_set:
-                collectors_to_run.append(JobSpyCollector())
+                collectors_to_run.append(
+                    JobSpyCollector(queries=queries, locations=locations, country_indeed=country)
+                )
             if "ats_direct" in source_set or "ats" in source_set:
                 collectors_to_run.append(ATSCollector())
             if "public_feeds" in source_set or "feeds" in source_set:
@@ -304,13 +346,15 @@ def run_ingestion(sources: Optional[List[str]] = None, mode: str = "full") -> Li
                 collectors_to_run.append(OptionalAPIsCollector())
         else:
             # Mode fast: ATS + Public Feeds + Optional APIs + JSON-LD
-            # Mode full: includes JobSpy
+            # Mode full: includes JobSpy with dynamic or configured queries
             collectors_to_run.append(ATSCollector())
             collectors_to_run.append(PublicFeedsCollector())
             collectors_to_run.append(OptionalAPIsCollector())
             collectors_to_run.append(JSONLDCollector())
             if mode == "full":
-                collectors_to_run.append(JobSpyCollector())
+                collectors_to_run.append(
+                    JobSpyCollector(queries=queries, locations=locations, country_indeed=country)
+                )
 
         for collector in collectors_to_run:
             _current_sync_status["active_collector"] = collector.name
@@ -354,6 +398,12 @@ def run_ingestion(sources: Optional[List[str]] = None, mode: str = "full") -> Li
                     "status": "failed",
                     "error": str(e),
                 })
+
+        # Automatically mark jobs older than 60 days as expired/inactive
+        try:
+            deactivate_expired_jobs(db, max_age_days=60)
+        except Exception as exp_err:
+            logger.warning(f"[Pipeline] Stale job expiration check failed: {exp_err}")
 
     finally:
         _current_sync_status["is_running"] = False

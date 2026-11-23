@@ -7,12 +7,15 @@ import JobCard from './components/JobCard.jsx';
 import JobDetailPane from './components/JobDetailPane.jsx';
 import TrackerBoard from './components/TrackerBoard.jsx';
 import SyncTelemetryDrawer from './components/SyncTelemetryDrawer.jsx';
+import LiveHarvestModal from './components/LiveHarvestModal.jsx';
 import {
   fetchJobs,
   fetchFilters,
   fetchSyncStatus,
   updateJobTracking,
   triggerSync,
+  verifyJobLiveness,
+  markJobExpired,
 } from './api/client.js';
 import { ChevronLeft, ChevronRight, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
 
@@ -27,12 +30,15 @@ export default function App() {
     return {
       q: params.get('q') || '',
       category: params.get('category') || null,
+      country: params.get('country') || null,
       location: params.get('location') || null,
       company: params.get('company') || null,
       source: params.get('source') || null,
       min_exp: params.get('min_exp') ? Number(params.get('min_exp')) : null,
       max_exp: params.get('max_exp') ? Number(params.get('max_exp')) : null,
       remote_only: params.get('remote_only') === 'true',
+      india_only: params.get('india_only') === 'true',
+      active_only: params.get('active_only') !== 'false',
       sort: params.get('sort') || 'newest',
       page: params.get('page') ? Number(params.get('page')) : 1,
       tab: params.get('tab') || 'discover',
@@ -46,6 +52,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState(initial.q);
   const [debouncedSearch, setDebouncedSearch] = useState(initial.q);
   const [selectedCategory, setSelectedCategory] = useState(initial.category);
+  const [selectedCountry, setSelectedCountry] = useState(initial.country);
   const [selectedCity, setSelectedCity] = useState(initial.location);
   const [selectedCompany, setSelectedCompany] = useState(initial.company);
   const [selectedSource, setSelectedSource] = useState(initial.source);
@@ -55,10 +62,17 @@ export default function App() {
       : null
   );
   const [remoteOnly, setRemoteOnly] = useState(initial.remote_only);
+  const [indiaOnly, setIndiaOnly] = useState(initial.india_only);
+  const [activeOnly, setActiveOnly] = useState(initial.active_only);
   const [sortBy, setSortBy] = useState(initial.sort);
   const [page, setPage] = useState(initial.page);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [isTelemetryOpen, setIsTelemetryOpen] = useState(false);
+  const [isHarvestModalOpen, setIsHarvestModalOpen] = useState(false);
+
+  // Live URL Verification state
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationResult, setVerificationResult] = useState(null);
 
   // Debounce search query
   useEffect(() => {
@@ -75,6 +89,7 @@ export default function App() {
     if (activeTab !== 'discover') params.set('tab', activeTab);
     if (debouncedSearch) params.set('q', debouncedSearch);
     if (selectedCategory) params.set('category', selectedCategory);
+    if (selectedCountry) params.set('country', selectedCountry);
     if (selectedCity) params.set('location', selectedCity);
     if (selectedCompany) params.set('company', selectedCompany);
     if (selectedSource) params.set('source', selectedSource);
@@ -83,6 +98,8 @@ export default function App() {
     if (selectedExp?.max !== undefined && selectedExp?.max !== null)
       params.set('max_exp', selectedExp.max);
     if (remoteOnly) params.set('remote_only', 'true');
+    if (indiaOnly) params.set('india_only', 'true');
+    if (!activeOnly) params.set('active_only', 'false');
     if (sortBy !== 'newest') params.set('sort', sortBy);
     if (page > 1) params.set('page', page);
 
@@ -92,11 +109,14 @@ export default function App() {
     activeTab,
     debouncedSearch,
     selectedCategory,
+    selectedCountry,
     selectedCity,
     selectedCompany,
     selectedSource,
     selectedExp,
     remoteOnly,
+    indiaOnly,
+    activeOnly,
     sortBy,
     page,
   ]);
@@ -117,21 +137,27 @@ export default function App() {
     };
     if (debouncedSearch) p.q = debouncedSearch;
     if (selectedCategory) p.category = selectedCategory;
+    if (selectedCountry) p.country = selectedCountry;
     if (selectedCity) p.location = selectedCity;
     if (selectedCompany) p.company = selectedCompany;
     if (selectedSource) p.source = selectedSource;
     if (selectedExp?.min !== undefined && selectedExp?.min !== null) p.min_exp = selectedExp.min;
     if (selectedExp?.max !== undefined && selectedExp?.max !== null) p.max_exp = selectedExp.max;
     if (remoteOnly) p.remote_only = true;
+    if (indiaOnly) p.india_only = true;
+    if (activeOnly) p.active_only = true;
     return p;
   }, [
     debouncedSearch,
     selectedCategory,
+    selectedCountry,
     selectedCity,
     selectedCompany,
     selectedSource,
     selectedExp,
     remoteOnly,
+    indiaOnly,
+    activeOnly,
     sortBy,
     page,
   ]);
@@ -234,24 +260,55 @@ export default function App() {
     trackingMutation.mutate({ jobId, payload });
   };
 
+  const handleVerifyLiveness = async (jobId) => {
+    setIsVerifying(true);
+    setVerificationResult(null);
+    try {
+      const res = await verifyJobLiveness(jobId);
+      setVerificationResult(res);
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['filters'] });
+    } catch (err) {
+      setVerificationResult({ job_id: jobId, is_active: true, message: `Check failed: ${err.message}` });
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleMarkExpired = async (jobId) => {
+    try {
+      await markJobExpired(jobId);
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['filters'] });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleResetFilters = () => {
     setSelectedCategory(null);
+    setSelectedCountry(null);
     setSelectedCity(null);
     setSelectedCompany(null);
     setSelectedSource(null);
     setSelectedExp(null);
     setRemoteOnly(false);
+    setIndiaOnly(false);
+    setActiveOnly(true);
     setSearchQuery('');
     setPage(1);
   };
 
   const activeFilterCount =
     (selectedCategory ? 1 : 0) +
+    (selectedCountry ? 1 : 0) +
     (selectedCity ? 1 : 0) +
     (selectedCompany ? 1 : 0) +
     (selectedSource ? 1 : 0) +
     (selectedExp ? 1 : 0) +
     (remoteOnly ? 1 : 0) +
+    (indiaOnly ? 1 : 0) +
+    (!activeOnly ? 1 : 0) +
     (debouncedSearch ? 1 : 0);
 
   const trackedCount = (filtersData?.kpis?.saved_jobs || 0) + (filtersData?.kpis?.applied_jobs || 0);
@@ -265,13 +322,27 @@ export default function App() {
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         onOpenTelemetry={() => setIsTelemetryOpen(true)}
+        onOpenLiveHarvest={() => setIsHarvestModalOpen(true)}
         onTriggerSync={(mode) => syncMutation.mutate(mode)}
         isSyncing={isSyncing}
         trackedCount={trackedCount}
+        indiaOnly={indiaOnly}
+        onToggleIndia={() => {
+          setIndiaOnly(!indiaOnly);
+          setPage(1);
+        }}
       />
 
       {/* 2. Compact KPI Metric Strip */}
-      <StatsStrip kpis={filtersData?.kpis} isLoading={!filtersData} />
+      <StatsStrip
+        kpis={filtersData?.kpis}
+        isLoading={!filtersData}
+        indiaOnly={indiaOnly}
+        onToggleIndia={() => {
+          setIndiaOnly(!indiaOnly);
+          setPage(1);
+        }}
+      />
 
       {/* 3. Main Views */}
       {activeTab === 'discover' ? (
@@ -282,6 +353,11 @@ export default function App() {
             selectedCategory={selectedCategory}
             onSelectCategory={(cat) => {
               setSelectedCategory(cat);
+              setPage(1);
+            }}
+            selectedCountry={selectedCountry}
+            onSelectCountry={(c) => {
+              setSelectedCountry(c);
               setPage(1);
             }}
             selectedCity={selectedCity}
@@ -307,6 +383,16 @@ export default function App() {
             remoteOnly={remoteOnly}
             onToggleRemote={(rem) => {
               setRemoteOnly(rem);
+              setPage(1);
+            }}
+            indiaOnly={indiaOnly}
+            onToggleIndia={(ind) => {
+              setIndiaOnly(ind);
+              setPage(1);
+            }}
+            activeOnly={activeOnly}
+            onToggleActive={(act) => {
+              setActiveOnly(act);
               setPage(1);
             }}
             onResetFilters={handleResetFilters}
@@ -363,7 +449,10 @@ export default function App() {
                   key={job.id}
                   job={job}
                   isSelected={job.id === selectedJob?.id}
-                  onSelect={() => setSelectedJobId(job.id)}
+                  onSelect={() => {
+                    setSelectedJobId(job.id);
+                    setVerificationResult(null);
+                  }}
                   onToggleSave={handleToggleSave}
                 />
               ))}
@@ -421,6 +510,10 @@ export default function App() {
               onToggleSave={handleToggleSave}
               onUpdateTracking={handleUpdateTracking}
               isTrackingPending={trackingMutation.isPending}
+              onVerifyLiveness={handleVerifyLiveness}
+              onMarkExpired={handleMarkExpired}
+              isVerifying={isVerifying}
+              verificationResult={verificationResult}
             />
           </div>
         </div>
@@ -446,6 +539,14 @@ export default function App() {
         syncStatus={syncStatus}
         onRefreshTelemetry={refetchTelemetry}
         onTriggerSync={(mode) => syncMutation.mutate(mode)}
+      />
+
+      {/* 5. Live Dynamic Job Harvest Modal */}
+      <LiveHarvestModal
+        isOpen={isHarvestModalOpen}
+        onClose={() => setIsHarvestModalOpen(false)}
+        onStartHarvest={(payload) => syncMutation.mutate(payload)}
+        isSyncing={isSyncing}
       />
     </div>
   );

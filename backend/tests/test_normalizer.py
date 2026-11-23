@@ -150,3 +150,15 @@ def test_fingerprint_generation():
 
     assert fp1 == fp2  # Case insensitive city
     assert fp1 != fp3
+
+
+def test_detect_country():
+    from app.normalizer import detect_country
+
+    assert detect_country("Bengaluru, India", "Bengaluru") == "India"
+    assert detect_country("Pune, Maharashtra", "Pune") == "India"
+    assert detect_country("Hyderabad, Telangana", "Hyderabad") == "India"
+    assert detect_country("Delhi NCR", "Delhi NCR") == "India"
+    assert detect_country("San Francisco, CA", "San Francisco") == "United States"
+    assert detect_country("London, UK", "London") == "United Kingdom"
+    assert detect_country("Remote, Worldwide", "Remote", is_remote=True) == "Remote / Worldwide"

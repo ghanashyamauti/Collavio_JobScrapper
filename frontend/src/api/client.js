@@ -47,10 +47,42 @@ export async function fetchSyncStatus() {
   return res.json();
 }
 
-export async function triggerSync(mode = 'fast') {
-  const res = await fetch(`${API_BASE_URL}/api/sync?mode=${mode}`, {
+export async function triggerSync(payload = 'fast') {
+  let url = `${API_BASE_URL}/api/sync`;
+  let options = { method: 'POST' };
+
+  if (typeof payload === 'string') {
+    url += `?mode=${payload}`;
+  } else if (typeof payload === 'object' && payload !== null) {
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = JSON.stringify(payload);
+  }
+
+  const res = await fetch(url, options);
+  if (!res.ok) throw new Error(`Failed to trigger sync: ${res.statusText}`);
+  return res.json();
+}
+
+export async function verifyJobLiveness(jobId) {
+  const res = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/verify`, {
     method: 'POST',
   });
-  if (!res.ok) throw new Error(`Failed to trigger sync: ${res.statusText}`);
+  if (!res.ok) throw new Error(`Failed to verify job liveness: ${res.statusText}`);
+  return res.json();
+}
+
+export async function markJobExpired(jobId) {
+  const res = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/expire`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Failed to expire job #${jobId}: ${res.statusText}`);
+  return res.json();
+}
+
+export async function cleanupExpiredJobs(days = 45) {
+  const res = await fetch(`${API_BASE_URL}/api/jobs/cleanup-expired?days=${days}`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Failed to cleanup expired jobs: ${res.statusText}`);
   return res.json();
 }

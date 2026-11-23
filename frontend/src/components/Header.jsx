@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, RefreshCw, ChevronDown, Bookmark } from 'lucide-react';
+import { Search, RefreshCw, ChevronDown, Bookmark, Sparkles } from 'lucide-react';
 
 export default function Header({
   activeTab,
@@ -7,9 +7,12 @@ export default function Header({
   searchQuery,
   setSearchQuery,
   onOpenTelemetry,
+  onOpenLiveHarvest,
   onTriggerSync,
   isSyncing,
   trackedCount = 0,
+  indiaOnly = false,
+  onToggleIndia,
 }) {
   const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
   const searchInputRef = useRef(null);
@@ -82,16 +85,16 @@ export default function Header({
         </nav>
       </div>
 
-      {/* Global Command Search */}
-      <div className="flex-1 max-w-md mx-4 hidden md:block">
-        <div className="relative">
+      {/* Global Command Search & Quick India Switcher */}
+      <div className="flex-1 max-w-lg mx-4 hidden md:flex items-center gap-2">
+        <div className="relative flex-1">
           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
           <input
             ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search roles, companies, or tech stack (e.g. Full Stack, AI, Marketing)..."
+            placeholder="Search roles, companies, tech stack (e.g. Full Stack, AI, Marketing)..."
             className="w-full bg-[#F8FAFC] border border-neutral-200 rounded-lg pl-8 pr-10 py-1.5 text-xs text-[#0F172A] placeholder-neutral-400 focus:outline-none focus:border-[#F26825] focus:bg-white transition-colors"
           />
           <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
@@ -100,10 +103,35 @@ export default function Header({
             </kbd>
           </div>
         </div>
+
+        {/* India Roles Quick Toggle Button */}
+        <button
+          type="button"
+          onClick={onToggleIndia}
+          title="Toggle India Roles"
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold shrink-0 transition-all cursor-pointer ${
+            indiaOnly
+              ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+              : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+          }`}
+        >
+          <span>🇮🇳</span>
+          <span>India</span>
+        </button>
       </div>
 
-      {/* Right Utility Cluster: Telemetry & Ingestion Actions */}
+      {/* Right Utility Cluster: Live Harvest, Telemetry & Ingestion Actions */}
       <div className="flex items-center gap-2">
+        {/* Live Dynamic Harvest Button */}
+        <button
+          onClick={onOpenLiveHarvest}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#F26825] bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100/70 transition-colors shadow-sm"
+          title="Open Custom Dynamic Job Harvester"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-[#F26825]" />
+          <span className="hidden sm:inline">Live Harvest</span>
+        </button>
+
         {/* Sync Telemetry Drawer Trigger */}
         <button
           onClick={onOpenTelemetry}
