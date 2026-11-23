@@ -551,7 +551,11 @@ def clean_html_description(html_content: Optional[str]) -> str:
         result = "\n".join(cleaned_lines).strip()
         # Collapse excessive newlines (> 2)
         result = re.sub(r"\n{3,}", "\n\n", result)
-        return result or content.strip()
+        # Cap description at 5,000 characters to prevent TOAST table bloat
+        # and allow 100,000+ jobs to fit efficiently in database storage
+        if len(result) > 5000:
+            result = result[:5000].rsplit(" ", 1)[0] + "..."
+        return result or content.strip()[:5000]
     except Exception:
         # Fallback to regex strip if parser fails
         clean = re.sub(r"<[^>]+>", " ", content)

@@ -69,6 +69,8 @@ export default function App() {
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [isTelemetryOpen, setIsTelemetryOpen] = useState(false);
   const [isHarvestModalOpen, setIsHarvestModalOpen] = useState(false);
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+  const [isMobileDetailOpen, setIsMobileDetailOpen] = useState(false);
 
   // Live URL Verification state
   const [isVerifying, setIsVerifying] = useState(false);
@@ -442,31 +444,47 @@ export default function App() {
 
           {/* Middle Feed Column */}
           <main className="flex-1 min-w-0 border-r border-neutral-200 bg-white">
-            {/* Feed Control Bar: Sort & Result Count */}
-            <div className="h-10 px-4 border-b border-neutral-200 flex items-center justify-between text-xs bg-white sticky top-[97px] z-10">
-              <span className="font-mono text-neutral-500 text-[11px] tabular-nums">
-                {isJobsLoading ? (
-                  'Loading openings...'
-                ) : (
-                  <>
-                    Showing{' '}
-                    <span className="font-semibold text-neutral-900">
-                      {jobsData?.total ? (page - 1) * 20 + 1 : 0}–
-                      {Math.min(page * 20, jobsData?.total || 0)}
-                    </span>{' '}
-                    of{' '}
-                    <span className="font-semibold text-neutral-900">
-                      {jobsData?.total?.toLocaleString() || 0}
-                    </span>{' '}
-                    roles
-                  </>
-                )}
-              </span>
+            {/* Feed Control Bar: Filters Trigger, Sort & Result Count */}
+            <div className="h-11 px-3 sm:px-4 border-b border-neutral-200 flex items-center justify-between text-xs bg-white sticky top-[97px] md:top-[97px] z-10 gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                {/* Mobile Filter Trigger Button (< lg) */}
+                <button
+                  type="button"
+                  onClick={() => setIsMobileFilterOpen(true)}
+                  className="lg:hidden flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-neutral-200 text-xs font-semibold text-neutral-800 bg-neutral-50 hover:bg-neutral-100 transition-colors shrink-0 shadow-xs cursor-pointer"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-[#F26825]" />
+                  <span>Filters</span>
+                  {activeFilterCount > 0 && (
+                    <span className="bg-[#F26825] text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full font-mono">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+
+                <span className="font-mono text-neutral-500 text-[11px] tabular-nums truncate">
+                  {isJobsLoading ? (
+                    'Loading openings...'
+                  ) : (
+                    <>
+                      Showing{' '}
+                      <span className="font-semibold text-neutral-900">
+                        {jobsData?.total ? (page - 1) * 20 + 1 : 0}–
+                        {Math.min(page * 20, jobsData?.total || 0)}
+                      </span>{' '}
+                      of{' '}
+                      <span className="font-semibold text-neutral-900">
+                        {jobsData?.total?.toLocaleString() || 0}
+                      </span>
+                    </>
+                  )}
+                </span>
+              </div>
 
               {/* Sort Selector */}
-              <div className="flex items-center gap-1.5">
-                <ArrowUpDown className="w-3 h-3 text-neutral-400" />
-                <span className="text-neutral-500 text-[11px]">Sort:</span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <ArrowUpDown className="w-3 h-3 text-neutral-400 hidden sm:inline" />
+                <span className="text-neutral-500 text-[11px] hidden sm:inline">Sort:</span>
                 <select
                   value={sortBy}
                   onChange={(e) => {
@@ -477,8 +495,8 @@ export default function App() {
                 >
                   <option value="newest">Newest First</option>
                   <option value="oldest">Oldest First</option>
-                  <option value="exp_asc">Experience (Low to High)</option>
-                  <option value="salary_desc">Compensation (High to Low)</option>
+                  <option value="exp_asc">Exp: Low to High</option>
+                  <option value="salary_desc">Salary: High to Low</option>
                 </select>
               </div>
             </div>
@@ -493,6 +511,7 @@ export default function App() {
                   onSelect={() => {
                     setSelectedJobId(job.id);
                     setVerificationResult(null);
+                    setIsMobileDetailOpen(true);
                   }}
                   onToggleSave={handleToggleSave}
                 />
@@ -544,7 +563,7 @@ export default function App() {
             )}
           </main>
 
-          {/* Right Sticky Reading Pane */}
+          {/* Desktop Right Sticky Reading Pane (hidden on < lg) */}
           <div className="w-[440px] shrink-0 hidden lg:block">
             <JobDetailPane
               job={selectedJob}
@@ -557,6 +576,106 @@ export default function App() {
               verificationResult={verificationResult}
             />
           </div>
+
+          {/* Mobile & Tablet Slide-Over Filter Drawer (< lg) */}
+          {isMobileFilterOpen && (
+            <div className="fixed inset-0 z-50 lg:hidden overflow-hidden">
+              <div
+                className="fixed inset-0 bg-neutral-900/40 backdrop-blur-xs transition-opacity"
+                onClick={() => setIsMobileFilterOpen(false)}
+              />
+              <div className="fixed inset-y-0 left-0 max-w-full flex pr-10 z-10 w-full sm:w-96 shadow-2xl">
+                <FilterSidebar
+                  filtersData={filtersData}
+                  selectedCategory={selectedCategory}
+                  onSelectCategory={(cat) => {
+                    setSelectedCategory(cat);
+                    setPage(1);
+                  }}
+                  selectedCountry={selectedCountry}
+                  onSelectCountry={(c) => {
+                    setSelectedCountry(c);
+                    setSelectedCity(null);
+                    if (c && c !== 'India') {
+                      setIndiaOnly(false);
+                    } else if (c === 'India') {
+                      setIndiaOnly(true);
+                    }
+                    setPage(1);
+                  }}
+                  selectedCity={selectedCity}
+                  onSelectCity={(city) => {
+                    setSelectedCity(city);
+                    setPage(1);
+                  }}
+                  selectedCompany={selectedCompany}
+                  onSelectCompany={(comp) => {
+                    setSelectedCompany(comp);
+                    setPage(1);
+                  }}
+                  selectedSource={selectedSource}
+                  onSelectSource={(src) => {
+                    setSelectedSource(src);
+                    setPage(1);
+                  }}
+                  selectedExp={selectedExp}
+                  onSelectExp={(exp) => {
+                    setSelectedExp(exp);
+                    setPage(1);
+                  }}
+                  remoteOnly={remoteOnly}
+                  onToggleRemote={(rem) => {
+                    setRemoteOnly(rem);
+                    setPage(1);
+                  }}
+                  indiaOnly={indiaOnly}
+                  onToggleIndia={(ind) => {
+                    setIndiaOnly(ind);
+                    if (ind) {
+                      setSelectedCountry('India');
+                    } else if (selectedCountry === 'India') {
+                      setSelectedCountry(null);
+                    }
+                    setPage(1);
+                  }}
+                  activeOnly={activeOnly}
+                  onToggleActive={(act) => {
+                    setActiveOnly(act);
+                    setPage(1);
+                  }}
+                  onResetFilters={handleResetFilters}
+                  activeFilterCount={activeFilterCount}
+                  onClose={() => setIsMobileFilterOpen(false)}
+                  isMobile={true}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Mobile & Tablet Slide-Over Job Detail Pane (< lg) */}
+          {isMobileDetailOpen && selectedJob && (
+            <div className="fixed inset-0 z-50 lg:hidden overflow-hidden">
+              <div
+                className="fixed inset-0 bg-neutral-900/50 backdrop-blur-xs transition-opacity"
+                onClick={() => setIsMobileDetailOpen(false)}
+              />
+              <div className="fixed inset-y-0 right-0 max-w-full flex z-10 w-full sm:w-[520px] shadow-2xl">
+                <div className="w-full bg-white h-full overflow-hidden flex flex-col">
+                  <JobDetailPane
+                    job={selectedJob}
+                    onToggleSave={handleToggleSave}
+                    onUpdateTracking={handleUpdateTracking}
+                    isTrackingPending={trackingMutation.isPending}
+                    onVerifyLiveness={handleVerifyLiveness}
+                    onMarkExpired={handleMarkExpired}
+                    isVerifying={isVerifying}
+                    verificationResult={verificationResult}
+                    onClose={() => setIsMobileDetailOpen(false)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         /* My Tracker Kanban Board View */

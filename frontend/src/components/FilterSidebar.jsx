@@ -51,6 +51,8 @@ export default function FilterSidebar({
   onToggleActive,
   onResetFilters,
   activeFilterCount,
+  onClose,
+  isMobile = false,
 }) {
   const [citySearch, setCitySearch] = useState('');
   const [compSearch, setCompSearch] = useState('');
@@ -90,23 +92,45 @@ export default function FilterSidebar({
   );
   const sources = filtersData?.sources || [];
 
+  const containerClasses = isMobile
+    ? "w-full bg-white h-full overflow-y-auto p-4 flex flex-col justify-between text-xs"
+    : "hidden lg:flex w-[252px] shrink-0 bg-white border-r border-neutral-200 h-[calc(100vh-56px-41px)] sticky top-[97px] overflow-y-auto p-4 flex-col justify-between text-xs";
+
   return (
-    <aside className="w-[252px] shrink-0 bg-white border-r border-neutral-200 h-[calc(100vh-56px-41px)] sticky top-[97px] overflow-y-auto p-4 flex flex-col justify-between text-xs">
+    <aside className={containerClasses}>
       <div className="space-y-6">
         {/* Header & Reset Button */}
         <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
-          <span className="font-semibold text-neutral-900 tracking-tight text-xs uppercase text-neutral-400">
-            Filters
-          </span>
-          {activeFilterCount > 0 && (
-            <button
-              onClick={onResetFilters}
-              className="text-[#F26825] hover:text-[#D95B1E] flex items-center gap-1 font-semibold transition-colors"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Reset all</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-neutral-900 tracking-tight text-xs uppercase text-neutral-400">
+              Filters
+            </span>
+            {activeFilterCount > 0 && (
+              <span className="bg-[#F26825] text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full font-mono">
+                {activeFilterCount}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {activeFilterCount > 0 && (
+              <button
+                onClick={onResetFilters}
+                className="text-[#F26825] hover:text-[#D95B1E] flex items-center gap-1 font-semibold transition-colors"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset all</span>
+              </button>
+            )}
+            {isMobile && onClose && (
+              <button
+                onClick={onClose}
+                className="p-1 rounded-md text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 ml-1"
+                aria-label="Close filters"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Quick Toggles */}
@@ -444,6 +468,16 @@ export default function FilterSidebar({
           </div>
         </div>
       </div>
+      {isMobile && onClose && (
+        <div className="sticky bottom-0 pt-4 mt-6 bg-white border-t border-neutral-100">
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 bg-[#F26825] hover:bg-[#D95B1E] text-white font-semibold rounded-lg shadow-sm text-xs transition-colors flex items-center justify-center gap-1.5"
+          >
+            <span>Apply Filters & View Roles</span>
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

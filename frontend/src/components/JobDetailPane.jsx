@@ -13,6 +13,8 @@ import {
   AlertTriangle,
   RefreshCw,
   ShieldCheck,
+  ArrowLeft,
+  X,
 } from 'lucide-react';
 
 const STATUS_OPTIONS = [
@@ -33,6 +35,7 @@ export default function JobDetailPane({
   onMarkExpired,
   isVerifying = false,
   verificationResult = null,
+  onClose = null,
 }) {
   const [notes, setNotes] = useState('');
   const [showNotes, setShowNotes] = useState(false);
@@ -206,8 +209,28 @@ export default function JobDetailPane({
   };
 
   return (
-    <div className="h-[calc(100vh-97px)] sticky top-[97px] bg-white border-l border-neutral-200 overflow-y-auto p-6 flex flex-col justify-between text-xs">
+    <div className="h-full lg:h-[calc(100vh-97px)] lg:sticky lg:top-[97px] bg-white border-l border-neutral-200 overflow-y-auto p-4 sm:p-6 flex flex-col justify-between text-xs">
       <div className="space-y-6">
+        {/* Mobile Back / Close Navigation Bar */}
+        {onClose && (
+          <div className="flex items-center justify-between pb-3 -mt-1 border-b border-neutral-100 lg:hidden">
+            <button
+              onClick={onClose}
+              className="flex items-center gap-1.5 text-xs font-semibold text-[#0F172A] hover:text-[#F26825] px-2.5 py-1.5 rounded-lg bg-neutral-100 hover:bg-orange-50 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to openings</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+              aria-label="Close pane"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Top Header */}
         <div>
           <div className="flex items-start justify-between gap-4">
@@ -427,7 +450,7 @@ export default function JobDetailPane({
         </div>
 
         {/* Full Editorial Description */}
-        <div className="pt-4 border-t border-neutral-200">
+        <div className="pt-4 border-t border-neutral-200 pb-16 lg:pb-0">
           <h3 className="font-semibold text-neutral-900 text-xs mb-3 uppercase tracking-wider text-neutral-400">
             Job Description
           </h3>
@@ -436,6 +459,28 @@ export default function JobDetailPane({
           </div>
         </div>
       </div>
+
+      {/* Mobile Sticky Quick Apply Bar */}
+      {onClose && (
+        <div className="sticky bottom-0 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 p-3 bg-white/95 backdrop-blur-md border-t border-neutral-200 mt-6 lg:hidden flex items-center gap-2 z-10 shadow-lg">
+          <button
+            onClick={() => onToggleSave(job)}
+            className="p-2.5 rounded-lg border border-neutral-200 text-neutral-700 hover:bg-neutral-50 shrink-0"
+            aria-label="Save Job"
+          >
+            <Bookmark className={`w-4 h-4 ${job.is_saved ? 'fill-[#F26825] text-[#F26825]' : ''}`} />
+          </button>
+          <a
+            href={primarySource?.apply_url || '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#F26825] hover:bg-[#D95B1E] text-white font-semibold rounded-lg text-xs transition-colors shadow-sm"
+          >
+            <span>Apply on {primarySource?.source_name ? primarySource.source_name.toUpperCase() : 'Company Board'}</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      )}
     </div>
   );
 }

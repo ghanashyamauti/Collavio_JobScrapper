@@ -230,46 +230,54 @@ class PublicFeedsCollector(BaseCollector):
             except Exception as e:
                 logger.warning(f"[PublicFeeds] Remote OK error: {e}")
 
-            # 5. Arbeitnow API
+            # 5. Arbeitnow API (Multi-page bulk harvest)
             before_arbeitnow = len(jobs)
             try:
-                url = "https://www.arbeitnow.com/api/job-board-api"
-                resp = client.get(url)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    for item in data.get("data", []):
-                        title = (item.get("title") or "").strip()
-                        company = (item.get("company_name") or "").strip()
-                        apply_url = item.get("url")
-                        if not title or not company or not apply_url:
-                            continue
+                for page in range(1, 26):  # Fetch up to 25 pages (up to 7,500 jobs)
+                    url = f"https://www.arbeitnow.com/api/job-board-api?page={page}"
+                    resp = client.get(url)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        raw_data = data.get("data", [])
+                        if not raw_data:
+                            break
+                        for item in raw_data:
+                            title = (item.get("title") or "").strip()
+                            company = (item.get("company_name") or "").strip()
+                            apply_url = item.get("url")
+                            if not title or not company or not apply_url:
+                                continue
 
-                        location = item.get("location") or ""
-                        is_remote = bool(item.get("remote")) or "remote" in location.lower()
-                        desc = item.get("description") or ""
+                            location = item.get("location") or ""
+                            is_remote = bool(item.get("remote")) or "remote" in location.lower()
+                            desc = item.get("description") or ""
 
-                        posted_at = None
-                        created_ts = item.get("created_at")
-                        if created_ts:
-                            try:
-                                posted_at = datetime.fromtimestamp(created_ts)
-                            except Exception:
-                                pass
+                            posted_at = None
+                            created_ts = item.get("created_at")
+                            if created_ts:
+                                try:
+                                    posted_at = datetime.fromtimestamp(created_ts)
+                                except Exception:
+                                    pass
 
-                        jobs.append(
-                            RawJob(
-                                source_name="arbeitnow",
-                                external_id=f"arbeitnow_{item.get('slug')}",
-                                title=title,
-                                company=company,
-                                apply_url=apply_url,
-                                location=location,
-                                is_remote=is_remote,
-                                description=desc,
-                                posted_at=posted_at,
+                            jobs.append(
+                                RawJob(
+                                    source_name="arbeitnow",
+                                    external_id=f"arbeitnow_{item.get('slug')}",
+                                    title=title,
+                                    company=company,
+                                    apply_url=apply_url,
+                                    location=location,
+                                    is_remote=is_remote,
+                                    description=desc,
+                                    posted_at=posted_at,
+                                )
                             )
-                        )
-                logger.info(f"[PublicFeeds] Arbeitnow fetched: {len(jobs) - before_arbeitnow} jobs.")
+                        if not data.get("links", {}).get("next"):
+                            break
+                    else:
+                        break
+                logger.info(f"[PublicFeeds] Arbeitnow fetched: {len(jobs) - before_arbeitnow} jobs across pages.")
             except Exception as e:
                 logger.warning(f"[PublicFeeds] Arbeitnow error: {e}")
 

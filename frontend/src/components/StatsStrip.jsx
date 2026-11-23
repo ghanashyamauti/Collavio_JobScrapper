@@ -26,8 +26,8 @@ export default function StatsStrip({ kpis, isLoading, indiaOnly, onToggleIndia }
   };
 
   return (
-    <div className="bg-white border-b border-neutral-200 px-6 py-2.5 flex items-center justify-between text-xs overflow-x-auto gap-6">
-      <div className="flex items-center gap-6">
+    <div className="bg-white border-b border-neutral-200 px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between text-xs overflow-x-auto gap-4 sm:gap-6 whitespace-nowrap">
+      <div className="flex items-center gap-4 sm:gap-6">
         {/* Total & Active Jobs */}
         <div className="flex items-center gap-2">
           <Database className="w-3.5 h-3.5 text-neutral-400" />

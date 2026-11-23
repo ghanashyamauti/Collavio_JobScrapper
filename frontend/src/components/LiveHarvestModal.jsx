@@ -95,8 +95,8 @@ export default function LiveHarvestModal({
         onClick={onClose}
       />
 
-      <div className="min-h-full flex items-center justify-center p-4">
-        <div className="relative bg-white rounded-xl max-w-lg w-full border border-neutral-200 shadow-2xl p-6 text-xs text-[#0F172A] space-y-5">
+      <div className="min-h-full flex items-center justify-center p-3 sm:p-4">
+        <div className="relative bg-white rounded-xl max-w-lg w-full border border-neutral-200 shadow-2xl p-4 sm:p-6 text-xs text-[#0F172A] space-y-4 sm:space-y-5">
           {/* Header */}
           <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
             <div className="flex items-center gap-2">

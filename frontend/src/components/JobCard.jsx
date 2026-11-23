@@ -83,7 +83,7 @@ export default function JobCard({ job, isSelected, onSelect, onToggleSave }) {
   return (
     <div
       onClick={onSelect}
-      className={`p-4 border-b border-neutral-200 transition-colors cursor-pointer text-xs ${
+      className={`p-3.5 sm:p-4 border-b border-neutral-200 transition-colors cursor-pointer text-xs active:bg-orange-50/50 ${
         isSelected
           ? 'border-l-2 border-l-[#F26825] bg-[#FFFBF7]'
           : 'border-l-2 border-l-transparent bg-white hover:bg-[#FAFAF9]'
@@ -91,7 +91,7 @@ export default function JobCard({ job, isSelected, onSelect, onToggleSave }) {
     >
       <div className="flex items-start justify-between gap-3">
         {/* Monogram + Title Info */}
-        <div className="flex items-start gap-3 flex-1 min-w-0">
+        <div className="flex items-start gap-2.5 sm:gap-3 flex-1 min-w-0">
           <div className="w-8 h-8 rounded bg-neutral-100 border border-neutral-200 text-[#111827] font-semibold text-xs flex items-center justify-center shrink-0">
             {companyInitial}
           </div>
@@ -107,12 +107,14 @@ export default function JobCard({ job, isSelected, onSelect, onToggleSave }) {
 
         {/* Bookmark Action */}
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onToggleSave(job);
           }}
-          className="text-neutral-400 hover:text-[#111827] p-1 transition-colors"
+          className="text-neutral-400 hover:text-[#111827] p-1.5 -mr-1.5 transition-colors touch-manipulation"
           title={job.is_saved ? 'Remove bookmark' : 'Bookmark job'}
+          aria-label={job.is_saved ? 'Remove bookmark' : 'Bookmark job'}
         >
           <Bookmark
             className={`w-4 h-4 ${job.is_saved ? 'fill-[#F26825] text-[#F26825]' : ''}`}

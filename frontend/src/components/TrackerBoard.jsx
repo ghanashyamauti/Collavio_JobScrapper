@@ -30,8 +30,8 @@ export default function TrackerBoard({
   const totalTracked = jobs.filter((j) => j.application_status && j.application_status !== 'none').length;
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-3 sm:p-6 max-w-full overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 sm:mb-6">
         <div>
           <h2 className="text-base font-bold text-[#111827] tracking-tight">
             Application Pipeline
@@ -40,19 +40,19 @@ export default function TrackerBoard({
             Organize, track, and monitor every stage of your job applications with custom notes.
           </p>
         </div>
-        <span className="font-mono text-xs bg-neutral-100 border border-neutral-200 px-2.5 py-1 rounded text-neutral-700">
+        <span className="font-mono text-xs bg-neutral-100 border border-neutral-200 px-2.5 py-1 rounded text-neutral-700 self-start sm:self-auto">
           {totalTracked} Active Applications
         </span>
       </div>
 
-      {/* Kanban Columns */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-start">
+      {/* Kanban Columns: Horizontal Swipe on Mobile, Responsive Grid on Desktop */}
+      <div className="flex md:grid md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 items-start overflow-x-auto pb-4 md:pb-0 snap-x">
         {STAGES.map((stage) => {
           const stageJobs = getJobsByStage(stage.id);
           return (
             <div
               key={stage.id}
-              className="bg-[#FFFFFF] border border-neutral-200 rounded-lg p-3 min-h-[500px] flex flex-col justify-between"
+              className="min-w-[280px] md:min-w-0 flex-1 bg-[#FFFFFF] border border-neutral-200 rounded-lg p-3 min-h-[420px] sm:min-h-[500px] flex flex-col justify-between shrink-0 snap-start shadow-xs"
             >
               <div>
                 {/* Column Header */}
