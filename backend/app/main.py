@@ -26,8 +26,10 @@ from app.schemas import (
     ScrapeRunOut,
     SyncRequest,
     JobVerifyResponse,
+    CompanyHarvestRequest,
 )
-from app.pipeline import run_ingestion, get_sync_telemetry, deactivate_expired_jobs
+from app.pipeline import run_ingestion, get_sync_telemetry, deactivate_expired_jobs, process_raw_jobs
+from app.collectors.ats_collector import ATSCollector
 
 logger = logging.getLogger("jobpulse")
 logging.basicConfig(level=logging.INFO)
@@ -311,23 +313,23 @@ def get_filters(db: Session = Depends(get_db)):
     ).all()
     categories = [FacetItem(name=r[0], count=r[1]) for r in cat_rows if r[0]]
 
-    # Cities
+    # Cities (Expanded limit to support all world cities in search filter)
     city_rows = db.execute(
         select(Job.city, func.count(Job.id))
         .where(Job.is_active == True, Job.city != None)
         .group_by(Job.city)
         .order_by(desc(func.count(Job.id)))
-        .limit(25)
+        .limit(500)
     ).all()
     cities = [FacetItem(name=r[0], count=r[1]) for r in city_rows if r[0]]
 
-    # Companies
+    # Companies (Expanded limit to support all companies in search filter)
     comp_rows = db.execute(
         select(Job.company, func.count(Job.id))
         .where(Job.is_active == True)
         .group_by(Job.company)
         .order_by(desc(func.count(Job.id)))
-        .limit(25)
+        .limit(500)
     ).all()
     companies = [FacetItem(name=r[0], count=r[1]) for r in comp_rows if r[0]]
 
@@ -528,4 +530,32 @@ def trigger_sync(
         "country": country,
         "sources": sources,
         "message": f"Background job ingestion triggered in '{sync_mode}' mode.",
+    }
+
+
+@app.post("/api/harvest/company")
+def harvest_company(payload: CompanyHarvestRequest, db: Session = Depends(get_db)):
+    """Dynamically probes and ingests jobs for ANY company across Greenhouse, Lever, and Ashby."""
+    comp_clean = payload.company.strip()
+    if not comp_clean:
+        raise HTTPException(status_code=400, detail="Company identifier or name is required.")
+
+    collector = ATSCollector()
+    raw_jobs = collector.harvest_single_company(comp_clean)
+    if not raw_jobs:
+        return {
+            "status": "not_found",
+            "company": comp_clean,
+            "jobs_found": 0,
+            "message": f"No active public ATS board found for '{comp_clean}'. You can also use Live Harvest to search any city/role via JobSpy.",
+        }
+
+    found, new_cnt, merged_cnt = process_raw_jobs(db, raw_jobs, f"dynamic_{comp_clean.lower()}")
+    return {
+        "status": "success",
+        "company": comp_clean,
+        "jobs_found": found,
+        "new_jobs": new_cnt,
+        "duplicates_merged": merged_cnt,
+        "message": f"Successfully ingested {new_cnt} new jobs ({found} total found) from {comp_clean}.",
     }

@@ -251,8 +251,18 @@ export default function FilterSidebar({
 
         {/* Department / Category */}
         <div>
-          <span className="font-medium text-neutral-800 block mb-2">Category</span>
-          <div className="space-y-0.5 max-h-48 overflow-y-auto pr-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium text-neutral-800">Category</span>
+            {selectedCategory && (
+              <button
+                onClick={() => onSelectCategory(null)}
+                className="text-[10px] text-[#F26825] hover:underline font-medium"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="space-y-0.5 max-h-52 overflow-y-auto pr-1">
             {categories.map((cat) => {
               const isSelected = selectedCategory === cat.name;
               return (
@@ -261,12 +271,16 @@ export default function FilterSidebar({
                   onClick={() => onSelectCategory(isSelected ? null : cat.name)}
                   className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
                     isSelected
-                      ? 'bg-neutral-100 font-semibold text-[#111827]'
+                      ? 'bg-neutral-900 font-semibold text-white'
                       : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
                   }`}
                 >
                   <span className="truncate pr-1">{cat.name}</span>
-                  <span className="font-mono text-[10px] text-neutral-400 tabular-nums">
+                  <span
+                    className={`font-mono text-[10px] tabular-nums ${
+                      isSelected ? 'text-white/80' : 'text-neutral-400'
+                    }`}
+                  >
                     {cat.count}
                   </span>
                 </button>
@@ -275,20 +289,30 @@ export default function FilterSidebar({
           </div>
         </div>
 
-        {/* Location / City */}
+        {/* Location & City */}
         <div>
-          <span className="font-medium text-neutral-800 block mb-2">Location & City</span>
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium text-neutral-800">Location & City</span>
+            {selectedCity && (
+              <button
+                onClick={() => onSelectCity(null)}
+                className="text-[10px] text-[#F26825] hover:underline font-medium"
+              >
+                Clear
+              </button>
+            )}
+          </div>
           <div className="relative mb-2">
             <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
               value={citySearch}
               onChange={(e) => setCitySearch(e.target.value)}
-              placeholder="Search cities..."
+              placeholder="Search any world city..."
               className="w-full bg-[#F7F7F5] border border-neutral-200 rounded px-2 pl-6 py-1 text-[11px] focus:outline-none focus:border-neutral-400"
             />
           </div>
-          <div className="space-y-0.5 max-h-36 overflow-y-auto pr-1">
+          <div className="space-y-0.5 max-h-48 overflow-y-auto pr-1">
             {cities.map((city) => {
               const isSelected = selectedCity === city.name;
               return (
@@ -297,12 +321,16 @@ export default function FilterSidebar({
                   onClick={() => onSelectCity(isSelected ? null : city.name)}
                   className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
                     isSelected
-                      ? 'bg-neutral-100 font-semibold text-[#111827]'
+                      ? 'bg-neutral-900 font-semibold text-white'
                       : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
                   }`}
                 >
                   <span className="truncate pr-1">{city.name}</span>
-                  <span className="font-mono text-[10px] text-neutral-400 tabular-nums">
+                  <span
+                    className={`font-mono text-[10px] tabular-nums ${
+                      isSelected ? 'text-white/80' : 'text-neutral-400'
+                    }`}
+                  >
                     {city.count}
                   </span>
                 </button>
@@ -313,7 +341,17 @@ export default function FilterSidebar({
 
         {/* Company */}
         <div>
-          <span className="font-medium text-neutral-800 block mb-2">Company</span>
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium text-neutral-800">Company</span>
+            {selectedCompany && (
+              <button
+                onClick={() => onSelectCompany(null)}
+                className="text-[10px] text-[#F26825] hover:underline font-medium"
+              >
+                Clear
+              </button>
+            )}
+          </div>
           <div className="relative mb-2">
             <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
@@ -324,7 +362,7 @@ export default function FilterSidebar({
               className="w-full bg-[#F7F7F5] border border-neutral-200 rounded px-2 pl-6 py-1 text-[11px] focus:outline-none focus:border-neutral-400"
             />
           </div>
-          <div className="space-y-0.5 max-h-36 overflow-y-auto pr-1">
+          <div className="space-y-0.5 max-h-48 overflow-y-auto pr-1">
             {companies.map((comp) => {
               const isSelected = selectedCompany === comp.name;
               return (
@@ -333,12 +371,16 @@ export default function FilterSidebar({
                   onClick={() => onSelectCompany(isSelected ? null : comp.name)}
                   className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
                     isSelected
-                      ? 'bg-neutral-100 font-semibold text-[#111827]'
+                      ? 'bg-neutral-900 font-semibold text-white'
                       : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
                   }`}
                 >
                   <span className="truncate pr-1">{comp.name}</span>
-                  <span className="font-mono text-[10px] text-neutral-400 tabular-nums">
+                  <span
+                    className={`font-mono text-[10px] tabular-nums ${
+                      isSelected ? 'text-white/80' : 'text-neutral-400'
+                    }`}
+                  >
                     {comp.count}
                   </span>
                 </button>
@@ -349,7 +391,17 @@ export default function FilterSidebar({
 
         {/* Platform Source */}
         <div>
-          <span className="font-medium text-neutral-800 block mb-2">Platform Source</span>
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium text-neutral-800">Platform Source</span>
+            {selectedSource && (
+              <button
+                onClick={() => onSelectSource(null)}
+                className="text-[10px] text-[#F26825] hover:underline font-medium"
+              >
+                Clear
+              </button>
+            )}
+          </div>
           <div className="space-y-0.5 max-h-40 overflow-y-auto pr-1">
             {sources.map((src) => {
               const isSelected = selectedSource === src.name;
@@ -360,7 +412,7 @@ export default function FilterSidebar({
                   onClick={() => onSelectSource(isSelected ? null : src.name)}
                   className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
                     isSelected
-                      ? 'bg-neutral-100 font-semibold text-[#111827]'
+                      ? 'bg-neutral-900 font-semibold text-white'
                       : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
                   }`}
                 >
@@ -371,7 +423,11 @@ export default function FilterSidebar({
                     />
                     <span className="capitalize truncate">{src.name}</span>
                   </div>
-                  <span className="font-mono text-[10px] text-neutral-400 tabular-nums">
+                  <span
+                    className={`font-mono text-[10px] tabular-nums ${
+                      isSelected ? 'text-white/80' : 'text-neutral-400'
+                    }`}
+                  >
                     {src.count}
                   </span>
                 </button>

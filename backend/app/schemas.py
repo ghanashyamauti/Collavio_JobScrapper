@@ -126,3 +126,7 @@ class HealthResponse(BaseModel):
     database: str
     scheduler_running: bool
     total_jobs: int
+
+
+class CompanyHarvestRequest(BaseModel):
+    company: str

@@ -94,7 +94,7 @@ export default function Header({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search roles, companies, tech stack (e.g. Full Stack, AI, Marketing)..."
+            placeholder="Search roles, companies, or cities worldwide (e.g. Software Developer, Pune, Stripe, Tokyo)..."
             className="w-full bg-[#F8FAFC] border border-neutral-200 rounded-lg pl-8 pr-10 py-1.5 text-xs text-[#0F172A] placeholder-neutral-400 focus:outline-none focus:border-[#F26825] focus:bg-white transition-colors"
           />
           <div className="absolute right-2.5 top-1/2 -translate-y-1/2">

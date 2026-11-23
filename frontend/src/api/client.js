@@ -86,3 +86,13 @@ export async function cleanupExpiredJobs(days = 45) {
   if (!res.ok) throw new Error(`Failed to cleanup expired jobs: ${res.statusText}`);
   return res.json();
 }
+
+export async function harvestCompany(company) {
+  const res = await fetch(`${API_BASE_URL}/api/harvest/company`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ company }),
+  });
+  if (!res.ok) throw new Error(`Failed to harvest company '${company}': ${res.statusText}`);
+  return res.json();
+}

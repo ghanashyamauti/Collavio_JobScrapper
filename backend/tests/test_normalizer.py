@@ -70,15 +70,15 @@ def test_location_and_remote_normalization():
 
 def test_category_classification():
     # Tech categories
-    assert classify_category("Senior Python Backend Engineer") == "Engineering"
-    assert classify_category("Full Stack Developer") == "Engineering"
+    assert classify_category("Senior Python Backend Engineer") == "Software Development"
+    assert classify_category("Full Stack Developer") == "Software Development"
     assert classify_category("Senior Data Scientist - NLP") == "Data & AI"
     assert classify_category("Lead Machine Learning Engineer") == "Data & AI"
-    assert classify_category("Technical Product Manager") == "Product"
-    assert classify_category("Principal UI/UX Designer") == "Design"
+    assert classify_category("Technical Product Manager") == "Product Management"
+    assert classify_category("Principal UI/UX Designer") == "UI/UX & Design"
 
     # Non-Tech corporate categories
-    assert classify_category("Growth Marketing Specialist") == "Marketing"
+    assert classify_category("Growth Marketing Specialist") == "Marketing & Content"
     assert classify_category("Enterprise Account Executive (SDR)") == "Sales & Growth"
     assert classify_category("Senior Financial Analyst & Controller") == "Finance & Legal"
     assert classify_category("Technical Talent Acquisition Partner (HR)") == "HR & Recruiting"

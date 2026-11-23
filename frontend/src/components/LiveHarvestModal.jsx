@@ -2,17 +2,29 @@ import React, { useState } from 'react';
 import { X, Sparkles, Search, MapPin, Globe, RefreshCw, Check } from 'lucide-react';
 
 const SUGGESTED_QUERIES = [
+  'Software Developer',
   'Software Engineer',
-  'Product Manager',
-  'Data Analyst',
   'Full Stack Developer',
+  'Backend Developer',
+  'Frontend Developer',
+  'DevOps Engineer',
+  'Data Scientist',
+  'Product Manager',
 ];
 
 const SUGGESTED_LOCATIONS = [
+  'Pune',
+  'Mumbai',
   'Bengaluru',
+  'Hyderabad',
+  'Delhi NCR',
   'Remote',
-  'India',
-  'United States',
+  'London',
+  'New York',
+  'San Francisco',
+  'Berlin',
+  'Singapore',
+  'Tokyo',
 ];
 
 export default function LiveHarvestModal({
