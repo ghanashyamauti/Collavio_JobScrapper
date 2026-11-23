@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     FRONTEND_ORIGIN: str = "http://localhost:5173"
 
     # Built-in Scheduler Interval (hours)
-    SYNC_INTERVAL_HOURS: int = 6
+    SYNC_INTERVAL_HOURS: int = 1
 
     # Collector 1: JobSpy
     JOBSPY_SITES: str = "linkedin,naukri,indeed,glassdoor"

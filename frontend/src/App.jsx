@@ -186,6 +186,24 @@ export default function App() {
 
   const isSyncing = Boolean(syncStatus?.is_running);
 
+  // Automatic background refresh check on app load / refresh:
+  // If no sync has occurred within the last hour, run a silent background sync automatically
+  useEffect(() => {
+    if (syncStatus && !syncStatus.is_running) {
+      const lastRun = syncStatus.last_started_at ? new Date(syncStatus.last_started_at).getTime() : 0;
+      const oneHourAgo = Date.now() - 60 * 60 * 1000;
+      if (lastRun < oneHourAgo) {
+        triggerSync({ mode: 'fast' })
+          .then(() => {
+            queryClient.invalidateQueries({ queryKey: ['sync_status'] });
+            queryClient.invalidateQueries({ queryKey: ['jobs'] });
+            queryClient.invalidateQueries({ queryKey: ['filters'] });
+          })
+          .catch(() => {});
+      }
+    }
+  }, [syncStatus, queryClient]);
+
   // Auto-select first job if none selected
   const jobs = jobsData?.jobs || [];
   const selectedJob = useMemo(() => {

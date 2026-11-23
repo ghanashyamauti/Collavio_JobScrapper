@@ -69,6 +69,12 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"[Startup] APScheduler startup skipped: {e}")
 
+    # Automatically trigger background ingestion on startup in a separate daemon thread
+    # so that new jobs and expired job deactivation happen immediately without manual clicks
+    import threading
+    threading.Thread(target=scheduled_sync_job, daemon=True, name="startup_auto_sync").start()
+    logger.info("[Startup] Initiated background auto-sync thread.")
+
     yield
 
     # Shutdown

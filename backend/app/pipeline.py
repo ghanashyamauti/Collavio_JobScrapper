@@ -59,6 +59,8 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
     existing_jobs_by_source_url: Dict[Tuple[str, str], Job] = {}
     existing_jobs_by_source_extid: Dict[Tuple[str, str], Job] = {}
     jobs_by_company_city: Dict[Tuple[str, str], List[Job]] = {}
+    seen_job_ids: Set[int] = set()
+    scraped_companies: Set[str] = set()
 
     all_existing_jobs = db.execute(select(Job).options(selectinload(Job.sources))).scalars().all()
     for job in all_existing_jobs:
@@ -100,6 +102,9 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
             duplicates_merged += 1
             existing_job.is_active = True
             existing_job.updated_at = datetime.now(timezone.utc)
+            if existing_job.id:
+                seen_job_ids.add(existing_job.id)
+            scraped_companies.add(norm_comp)
             if not existing_job.country or existing_job.country == "Global":
                 existing_job.country = country
             _backfill_job_metadata(
@@ -116,6 +121,9 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
             duplicates_merged += 1
             existing_job.is_active = True
             existing_job.updated_at = datetime.now(timezone.utc)
+            if existing_job.id:
+                seen_job_ids.add(existing_job.id)
+            scraped_companies.add(norm_comp)
             if not existing_job.country or existing_job.country == "Global":
                 existing_job.country = country
             _attach_source_and_backfill(
@@ -154,6 +162,9 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
             duplicates_merged += 1
             fuzzy_matched_job.is_active = True
             fuzzy_matched_job.updated_at = datetime.now(timezone.utc)
+            if fuzzy_matched_job.id:
+                seen_job_ids.add(fuzzy_matched_job.id)
+            scraped_companies.add(norm_comp)
             if not fuzzy_matched_job.country or fuzzy_matched_job.country == "Global":
                 fuzzy_matched_job.country = country
             _attach_source_and_backfill(
@@ -218,12 +229,41 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
         jobs_by_company_city.setdefault(comp_city_key, []).append(new_job)
 
         new_jobs += 1
+        scraped_companies.add(norm_comp)
 
         if new_jobs % 250 == 0:
             db.commit()
 
         if (idx + 1) % 500 == 0 or (idx + 1) == jobs_found:
             logger.info(f"[Pipeline] [{collector_name}] Processed {idx + 1}/{jobs_found} jobs ({new_jobs} new, {duplicates_merged} merged)...")
+
+    # -------------------------------------------------------------
+    # Automatic Job Deactivation for Direct Company/ATS Scraping
+    # If a company board was scraped, any job in DB for that company not present in raw_jobs is expired/closed.
+    # -------------------------------------------------------------
+    deactivated_count = 0
+    if collector_name in ("ats_direct", "dynamic_company") and scraped_companies:
+        for job in all_existing_jobs:
+            if (
+                job.id
+                and job.is_active
+                and job.id not in seen_job_ids
+                and job.normalized_company in scraped_companies
+            ):
+                # Verify that this job was sourced from this ATS scraper
+                has_ats_source = any(
+                    s.source_name in ("ats_direct", "dynamic_company", collector_name)
+                    for s in job.sources
+                )
+                if has_ats_source:
+                    job.is_active = False
+                    job.updated_at = datetime.now(timezone.utc)
+                    deactivated_count += 1
+        if deactivated_count > 0:
+            logger.info(
+                f"[Pipeline] [{collector_name}] Deactivated {deactivated_count} closed/removed postings "
+                f"across {len(scraped_companies)} companies."
+            )
 
     db.commit()
     return jobs_found, new_jobs, duplicates_merged
@@ -286,7 +326,7 @@ def _attach_source_and_backfill(
     _backfill_job_metadata(job, description, salary_min, salary_max, currency, min_exp, max_exp, is_explicit_exp)
 
 
-def deactivate_expired_jobs(db: Session, max_age_days: int = 45) -> int:
+def deactivate_expired_jobs(db: Session, max_age_days: int = 30) -> int:
     """Marks jobs older than max_age_days without fresh sightings as inactive."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
     expired_jobs = db.execute(
@@ -399,9 +439,9 @@ def run_ingestion(
                     "error": str(e),
                 })
 
-        # Automatically mark jobs older than 60 days as expired/inactive
+        # Automatically mark jobs older than 30 days without updates as expired/inactive
         try:
-            deactivate_expired_jobs(db, max_age_days=60)
+            deactivate_expired_jobs(db, max_age_days=30)
         except Exception as exp_err:
             logger.warning(f"[Pipeline] Stale job expiration check failed: {exp_err}")
 
