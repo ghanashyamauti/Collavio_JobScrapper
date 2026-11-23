@@ -35,8 +35,11 @@ export async function updateJobTracking(jobId, payload) {
   return res.json();
 }
 
-export async function fetchFilters() {
-  const res = await fetch(`${API_BASE_URL}/api/filters`);
+export async function fetchFilters(country = null) {
+  const url = country
+    ? `${API_BASE_URL}/api/filters?country=${encodeURIComponent(country)}`
+    : `${API_BASE_URL}/api/filters`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch filter facets: ${res.statusText}`);
   return res.json();
 }

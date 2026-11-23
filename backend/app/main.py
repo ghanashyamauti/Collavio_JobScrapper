@@ -293,7 +293,10 @@ def track_job(job_id: int, payload: JobTrackUpdate, db: Session = Depends(get_db
 
 
 @app.get("/api/filters", response_model=FiltersResponse)
-def get_filters(db: Session = Depends(get_db)):
+def get_filters(
+    country: Optional[str] = Query(None, description="Filter facets by selected country"),
+    db: Session = Depends(get_db)
+):
     """Computes dynamic facet counts and top-level KPIs for dashboard sidebar and ribbon."""
     # Countries
     country_rows = db.execute(
@@ -313,13 +316,37 @@ def get_filters(db: Session = Depends(get_db)):
     ).all()
     categories = [FacetItem(name=r[0], count=r[1]) for r in cat_rows if r[0]]
 
-    # Cities (Expanded limit to support all world cities in search filter)
+    # Cities (Filter by country if selected, so only that country's cities appear)
+    city_query = select(Job.city, func.count(Job.id)).where(Job.is_active == True, Job.city != None)
+    if country:
+        c_lower = country.strip().lower()
+        if c_lower in ("india", "in"):
+            city_query = city_query.where(
+                or_(
+                    Job.country == "India",
+                    Job.location.ilike("%india%"),
+                )
+            )
+        elif "remote" in c_lower or "worldwide" in c_lower:
+            city_query = city_query.where(
+                or_(
+                    Job.is_remote == True,
+                    Job.country == "Remote / Worldwide",
+                    Job.location.ilike("%remote%"),
+                    Job.city.ilike("%remote%"),
+                )
+            )
+        else:
+            city_query = city_query.where(
+                or_(
+                    Job.country == country,
+                    Job.country.ilike(f"%{country}%"),
+                    Job.location.ilike(f"%{country}%"),
+                )
+            )
+
     city_rows = db.execute(
-        select(Job.city, func.count(Job.id))
-        .where(Job.is_active == True, Job.city != None)
-        .group_by(Job.city)
-        .order_by(desc(func.count(Job.id)))
-        .limit(500)
+        city_query.group_by(Job.city).order_by(desc(func.count(Job.id))).limit(500)
     ).all()
     cities = [FacetItem(name=r[0], count=r[1]) for r in city_rows if r[0]]
 

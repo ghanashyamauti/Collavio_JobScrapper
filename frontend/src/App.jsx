@@ -125,8 +125,8 @@ export default function App() {
   // Data Queries
   // -------------------------------------------------------------
   const { data: filtersData, refetch: refetchFilters } = useQuery({
-    queryKey: ['filters'],
-    queryFn: fetchFilters,
+    queryKey: ['filters', selectedCountry],
+    queryFn: () => fetchFilters(selectedCountry),
   });
 
   const queryParams = useMemo(() => {
@@ -370,6 +370,7 @@ export default function App() {
             selectedCountry={selectedCountry}
             onSelectCountry={(c) => {
               setSelectedCountry(c);
+              setSelectedCity(null);
               if (c && c !== 'India') {
                 setIndiaOnly(false);
               } else if (c === 'India') {

@@ -249,6 +249,64 @@ export default function FilterSidebar({
           </div>
         )}
 
+        {/* Location & City (Placed next to Country; dynamically shows only cities of the selected country) */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium text-neutral-800">
+              {selectedCountry ? `Cities in ${selectedCountry}` : 'Location & City'}
+            </span>
+            {selectedCity && (
+              <button
+                onClick={() => onSelectCity(null)}
+                className="text-[10px] text-[#F26825] hover:underline font-medium"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="relative mb-2">
+            <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input
+              type="text"
+              value={citySearch}
+              onChange={(e) => setCitySearch(e.target.value)}
+              placeholder={selectedCountry ? `Search cities in ${selectedCountry}...` : "Search any world city..."}
+              className="w-full bg-[#F7F7F5] border border-neutral-200 rounded px-2 pl-6 py-1 text-[11px] focus:outline-none focus:border-neutral-400"
+            />
+          </div>
+          <div className="space-y-0.5 max-h-48 overflow-y-auto pr-1">
+            {cities.length === 0 ? (
+              <div className="py-2 text-center text-[11px] text-neutral-400">
+                {citySearch ? `No cities match "${citySearch}"` : 'No cities listed yet'}
+              </div>
+            ) : (
+              cities.map((city) => {
+                const isSelected = selectedCity === city.name;
+                return (
+                  <button
+                    key={city.name}
+                    onClick={() => onSelectCity(isSelected ? null : city.name)}
+                    className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
+                      isSelected
+                        ? 'bg-neutral-900 font-semibold text-white'
+                        : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
+                    }`}
+                  >
+                    <span className="truncate pr-1">{city.name}</span>
+                    <span
+                      className={`font-mono text-[10px] tabular-nums ${
+                        isSelected ? 'text-white/80' : 'text-neutral-400'
+                      }`}
+                    >
+                      {city.count}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
         {/* Department / Category */}
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -282,56 +340,6 @@ export default function FilterSidebar({
                     }`}
                   >
                     {cat.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Location & City */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium text-neutral-800">Location & City</span>
-            {selectedCity && (
-              <button
-                onClick={() => onSelectCity(null)}
-                className="text-[10px] text-[#F26825] hover:underline font-medium"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-          <div className="relative mb-2">
-            <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400" />
-            <input
-              type="text"
-              value={citySearch}
-              onChange={(e) => setCitySearch(e.target.value)}
-              placeholder="Search any world city..."
-              className="w-full bg-[#F7F7F5] border border-neutral-200 rounded px-2 pl-6 py-1 text-[11px] focus:outline-none focus:border-neutral-400"
-            />
-          </div>
-          <div className="space-y-0.5 max-h-48 overflow-y-auto pr-1">
-            {cities.map((city) => {
-              const isSelected = selectedCity === city.name;
-              return (
-                <button
-                  key={city.name}
-                  onClick={() => onSelectCity(isSelected ? null : city.name)}
-                  className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
-                    isSelected
-                      ? 'bg-neutral-900 font-semibold text-white'
-                      : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-                  }`}
-                >
-                  <span className="truncate pr-1">{city.name}</span>
-                  <span
-                    className={`font-mono text-[10px] tabular-nums ${
-                      isSelected ? 'text-white/80' : 'text-neutral-400'
-                    }`}
-                  >
-                    {city.count}
                   </span>
                 </button>
               );
