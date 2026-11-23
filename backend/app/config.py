@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     PROXIES: Optional[str] = None
 
     # Collector 2: Direct Company ATS Slugs
-    GREENHOUSE_BOARDS: str = "stripe,gitlab,figma,airbnb,databricks,razorpay,browserstack,postman,phonepe,coinbase"
-    LEVER_BOARDS: str = "atlassian,plaid,netflix,spotify,meesho"
+    GREENHOUSE_BOARDS: str = "pubmatic,ensono,rubrik,zocdoc,druva,ivalua,inmobi,groww,stripe"
+    LEVER_BOARDS: str = "mindtickle,atlassian,plaid,spotify"
     ASHBY_BOARDS: str = "linear,ramp,notion,vercel,openai,elevenlabs"
     SMARTRECRUITERS_BOARDS: str = "visa,bosch,publicissapient,wipro"
     WORKABLE_BOARDS: str = ""
