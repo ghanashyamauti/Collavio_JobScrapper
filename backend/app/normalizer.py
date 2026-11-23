@@ -320,10 +320,7 @@ def normalize_location_and_remote(
 
 
 INDIA_CITIES = {
-    "bengaluru", "bangalore", "mumbai", "bombay", "delhi", "new delhi", "delhi ncr",
-    "ncr", "gurgaon", "gurugram", "noida", "hyderabad", "pune", "chennai", "madras",
-    "kolkata", "calcutta", "ahmedabad", "jaipur", "kochi", "cochin", "chandigarh",
-    "indore", "surat", "bhopal", "visakhapatnam", "nagpur", "vadodara"
+    "bengaluru", "bangalore", "mumbai", "delhi", "hyderabad", "pune", "chennai"
 }
 
 

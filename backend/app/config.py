@@ -16,8 +16,8 @@ class Settings(BaseSettings):
 
     # Collector 1: JobSpy
     JOBSPY_SITES: str = "linkedin,naukri,indeed,glassdoor"
-    SEARCH_QUERIES: str = "Software Engineer,Full Stack Developer,Data Analyst,Product Manager,UI UX Designer,Digital Marketing,Business Analyst,Finance Analyst,HR Recruiter"
-    SEARCH_LOCATIONS: str = "Bengaluru,Pune,Hyderabad,Mumbai,Delhi NCR,Remote"
+    SEARCH_QUERIES: str = "Software Engineer,Product Manager"
+    SEARCH_LOCATIONS: str = "Bengaluru,Remote"
     COUNTRY_INDEED: str = "India"
     RESULTS_PER_QUERY: int = 10
     HOURS_OLD: int = 72

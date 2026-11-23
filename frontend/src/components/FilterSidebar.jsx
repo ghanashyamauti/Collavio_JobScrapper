@@ -56,35 +56,31 @@ export default function FilterSidebar({
   const [compSearch, setCompSearch] = useState('');
 
   const categories = filtersData?.categories || [];
-  const rawCountries = filtersData?.countries || [];
 
-  // Standard countries list with flags
-  const baseCountries = [
-    { name: 'India', flag: '🇮🇳' },
-    { name: 'Remote / Worldwide', flag: '🌐' },
-    { name: 'United States', flag: '🇺🇸' },
-    { name: 'United Kingdom', flag: '🇬🇧' },
-    { name: 'Germany', flag: '🇩🇪' },
-  ];
+  const COUNTRY_FLAG_MAP = {
+    india: '🇮🇳',
+    'remote / worldwide': '🌐',
+    remote: '🌐',
+    'united states': '🇺🇸',
+    'united kingdom': '🇬🇧',
+    germany: '🇩🇪',
+    canada: '🇨🇦',
+    singapore: '🇸🇬',
+    australia: '🇦🇺',
+    global: '🌍',
+  };
 
-  const countryCounts = {};
-  rawCountries.forEach((c) => {
-    countryCounts[c.name] = c.count;
-  });
+  const getCountryFlag = (name) => {
+    if (!name) return '🌍';
+    return COUNTRY_FLAG_MAP[name.trim().toLowerCase()] || '🌍';
+  };
 
-  const displayCountries = baseCountries.map((bc) => ({
-    ...bc,
-    count: countryCounts[bc.name] || 0,
+  // Directly fetch countries from the API / database response - zero hardcoded list
+  const countries = (filtersData?.countries || []).map((c) => ({
+    name: c.name,
+    count: c.count,
+    flag: getCountryFlag(c.name),
   }));
-
-  rawCountries.forEach((c) => {
-    if (
-      c.name &&
-      !displayCountries.some((dc) => dc.name.toLowerCase() === c.name.toLowerCase())
-    ) {
-      displayCountries.push({ name: c.name, flag: '🌍', count: c.count });
-    }
-  });
 
   const cities = (filtersData?.cities || []).filter((c) =>
     c.name.toLowerCase().includes(citySearch.toLowerCase())
@@ -207,49 +203,51 @@ export default function FilterSidebar({
         </div>
 
         {/* Country & Region */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium text-neutral-800">Country</span>
-            {selectedCountry && (
-              <button
-                onClick={() => onSelectCountry(null)}
-                className="text-[10px] text-[#F26825] hover:underline font-medium"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-          <div className="space-y-0.5 max-h-40 overflow-y-auto pr-1">
-            {displayCountries.map((c) => {
-              const isSelected = selectedCountry === c.name;
-              return (
+        {countries.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-medium text-neutral-800">Country</span>
+              {selectedCountry && (
                 <button
-                  key={c.name}
-                  onClick={() => onSelectCountry(isSelected ? null : c.name)}
-                  className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
-                    isSelected
-                      ? 'bg-neutral-900 font-semibold text-white'
-                      : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-                  }`}
+                  onClick={() => onSelectCountry(null)}
+                  className="text-[10px] text-[#F26825] hover:underline font-medium"
                 >
-                  <div className="flex items-center gap-1.5 truncate pr-1">
-                    <span>{c.flag || '🌍'}</span>
-                    <span className="truncate">{c.name}</span>
-                  </div>
-                  {c.count > 0 && (
-                    <span
-                      className={`font-mono text-[10px] tabular-nums ${
-                        isSelected ? 'text-white/80' : 'text-neutral-400'
-                      }`}
-                    >
-                      {c.count}
-                    </span>
-                  )}
+                  Clear
                 </button>
-              );
-            })}
+              )}
+            </div>
+            <div className="space-y-0.5 max-h-40 overflow-y-auto pr-1">
+              {countries.map((c) => {
+                const isSelected = selectedCountry === c.name;
+                return (
+                  <button
+                    key={c.name}
+                    onClick={() => onSelectCountry(isSelected ? null : c.name)}
+                    className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
+                      isSelected
+                        ? 'bg-neutral-900 font-semibold text-white'
+                        : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 truncate pr-1">
+                      <span>{c.flag || '🌍'}</span>
+                      <span className="truncate">{c.name}</span>
+                    </div>
+                    {c.count > 0 && (
+                      <span
+                        className={`font-mono text-[10px] tabular-nums ${
+                          isSelected ? 'text-white/80' : 'text-neutral-400'
+                        }`}
+                      >
+                        {c.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Department / Category */}
         <div>
