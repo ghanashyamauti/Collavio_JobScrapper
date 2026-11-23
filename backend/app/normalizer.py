@@ -1,4 +1,5 @@
 import re
+import html
 import hashlib
 from typing import Optional, Tuple
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
@@ -450,24 +451,27 @@ def parse_experience(
 
 
 def clean_html_description(html_content: Optional[str]) -> str:
-    """Converts raw HTML descriptions into clean, editorial plain text with preserved line breaks and bullet points."""
+    """Converts raw or entity-escaped HTML descriptions into clean, editorial plain text with preserved line breaks and bullet points."""
     if not html_content:
         return ""
 
+    # Unescape HTML entities first (handles &lt;p&gt;, &amp;, &#39;, &quot;, etc.)
+    content = html.unescape(html.unescape(html_content.strip()))
+
     # If it's already plain text without HTML tags
-    if "<" not in html_content and ">" not in html_content:
-        return html_content.strip()
+    if "<" not in content and ">" not in content:
+        return content.strip()
 
     try:
-        soup = BeautifulSoup(html_content, "html.parser")
+        soup = BeautifulSoup(content, "html.parser")
 
         # Replace <li> with bullet characters
         for li in soup.find_all("li"):
-            li.insert_before("• ")
-            li.append("\n")
+            li_text = li.get_text().strip()
+            li.replace_with(f"• {li_text}\n")
 
         # Replace block tags with newlines
-        for block in soup.find_all(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "section"]):
+        for block in soup.find_all(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "section", "ul", "ol"]):
             block.append("\n\n")
 
         for br in soup.find_all("br"):
@@ -488,11 +492,12 @@ def clean_html_description(html_content: Optional[str]) -> str:
         result = "\n".join(cleaned_lines).strip()
         # Collapse excessive newlines (> 2)
         result = re.sub(r"\n{3,}", "\n\n", result)
-        return result or html_content.strip()
+        return result or content.strip()
     except Exception:
         # Fallback to regex strip if parser fails
-        clean = re.sub(r"<[^>]+>", " ", html_content)
-        return re.sub(r"\s+", " ", clean).strip()
+        clean = re.sub(r"<[^>]+>", " ", content)
+        clean = re.sub(r"\s+", " ", clean).strip()
+        return clean
 
 
 def generate_fingerprint(normalized_company: str, normalized_title: str, city: Optional[str]) -> str:

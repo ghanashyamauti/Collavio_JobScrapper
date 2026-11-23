@@ -56,7 +56,36 @@ export default function FilterSidebar({
   const [compSearch, setCompSearch] = useState('');
 
   const categories = filtersData?.categories || [];
-  const countries = filtersData?.countries || [];
+  const rawCountries = filtersData?.countries || [];
+
+  // Standard countries list with flags
+  const baseCountries = [
+    { name: 'India', flag: '🇮🇳' },
+    { name: 'Remote / Worldwide', flag: '🌐' },
+    { name: 'United States', flag: '🇺🇸' },
+    { name: 'United Kingdom', flag: '🇬🇧' },
+    { name: 'Germany', flag: '🇩🇪' },
+  ];
+
+  const countryCounts = {};
+  rawCountries.forEach((c) => {
+    countryCounts[c.name] = c.count;
+  });
+
+  const displayCountries = baseCountries.map((bc) => ({
+    ...bc,
+    count: countryCounts[bc.name] || 0,
+  }));
+
+  rawCountries.forEach((c) => {
+    if (
+      c.name &&
+      !displayCountries.some((dc) => dc.name.toLowerCase() === c.name.toLowerCase())
+    ) {
+      displayCountries.push({ name: c.name, flag: '🌍', count: c.count });
+    }
+  });
+
   const cities = (filtersData?.cities || []).filter((c) =>
     c.name.toLowerCase().includes(citySearch.toLowerCase())
   );
@@ -178,39 +207,49 @@ export default function FilterSidebar({
         </div>
 
         {/* Country & Region */}
-        {countries.length > 0 && (
-          <div>
-            <span className="font-medium text-neutral-800 block mb-2">Country</span>
-            <div className="space-y-0.5 max-h-36 overflow-y-auto pr-1">
-              {countries.map((c) => {
-                const isSelected = selectedCountry === c.name;
-                return (
-                  <button
-                    key={c.name}
-                    onClick={() => onSelectCountry(isSelected ? null : c.name)}
-                    className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
-                      isSelected
-                        ? 'bg-neutral-100 font-semibold text-[#111827]'
-                        : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 truncate pr-1">
-                      {c.name === 'India' && <span>🇮🇳</span>}
-                      {c.name === 'United States' && <span>🇺🇸</span>}
-                      {c.name === 'United Kingdom' && <span>🇬🇧</span>}
-                      {c.name === 'Germany' && <span>🇩🇪</span>}
-                      {c.name.includes('Remote') && <span>🌐</span>}
-                      <span className="truncate">{c.name}</span>
-                    </div>
-                    <span className="font-mono text-[10px] text-neutral-400 tabular-nums">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium text-neutral-800">Country</span>
+            {selectedCountry && (
+              <button
+                onClick={() => onSelectCountry(null)}
+                className="text-[10px] text-[#F26825] hover:underline font-medium"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="space-y-0.5 max-h-40 overflow-y-auto pr-1">
+            {displayCountries.map((c) => {
+              const isSelected = selectedCountry === c.name;
+              return (
+                <button
+                  key={c.name}
+                  onClick={() => onSelectCountry(isSelected ? null : c.name)}
+                  className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
+                    isSelected
+                      ? 'bg-neutral-900 font-semibold text-white'
+                      : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 truncate pr-1">
+                    <span>{c.flag || '🌍'}</span>
+                    <span className="truncate">{c.name}</span>
+                  </div>
+                  {c.count > 0 && (
+                    <span
+                      className={`font-mono text-[10px] tabular-nums ${
+                        isSelected ? 'text-white/80' : 'text-neutral-400'
+                      }`}
+                    >
                       {c.count}
                     </span>
-                  </button>
-                );
-              })}
-            </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
-        )}
+        </div>
 
         {/* Department / Category */}
         <div>

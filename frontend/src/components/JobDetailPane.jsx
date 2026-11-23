@@ -97,6 +97,114 @@ export default function JobDetailPane({
   const primarySource = job.sources?.[0];
   const siblingSources = job.sources?.slice(1) || [];
 
+  const renderCleanDescription = (raw) => {
+    if (!raw) {
+      return (
+        <p className="text-neutral-400 italic">No description provided by the source board.</p>
+      );
+    }
+
+    // Step 1: Decode HTML entities (&lt; -> <, &amp; -> &, &#39; -> ', etc.)
+    let content = raw;
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.innerHTML = content;
+      content = textarea.value;
+      if (content.includes('&lt;') || content.includes('&gt;')) {
+        textarea.innerHTML = content;
+        content = textarea.value;
+      }
+    } catch {
+      content = content
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+    }
+
+    // Step 2: Convert HTML tags into structured text if HTML tags present
+    if (/<[a-z][\s\S]*>/i.test(content)) {
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(content, 'text/html');
+
+        doc.querySelectorAll('li').forEach((li) => {
+          li.textContent = `• ${li.textContent.trim()}\n`;
+        });
+
+        doc.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, ul, ol').forEach((el) => {
+          el.insertAdjacentText('afterend', '\n\n');
+        });
+
+        doc.querySelectorAll('br').forEach((br) => {
+          br.replaceWith('\n');
+        });
+
+        content = doc.body.textContent || content;
+      } catch {
+        content = content
+          .replace(/<li[^>]*>/gi, '• ')
+          .replace(/<\/li>/gi, '\n')
+          .replace(/<\/p>|<\/div>|<br\s*\/?>/gi, '\n\n')
+          .replace(/<[^>]+>/g, '');
+      }
+    }
+
+    // Step 3: Split into clean paragraphs and formatted sections
+    const blocks = content
+      .split(/\n{2,}/)
+      .map((b) => b.trim())
+      .filter(Boolean);
+
+    return (
+      <div className="space-y-3.5 leading-relaxed text-xs text-neutral-700">
+        {blocks.map((block, idx) => {
+          // Bullet point lists
+          if (block.includes('• ') || block.startsWith('- ') || block.startsWith('* ')) {
+            const lines = block.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+            return (
+              <ul key={idx} className="space-y-1.5 pl-1 my-2">
+                {lines.map((line, lIdx) => {
+                  const itemText = line.replace(/^[•\-\*]\s*/, '').trim();
+                  return (
+                    <li key={lIdx} className="flex items-start gap-2">
+                      <span className="text-[#F26825] font-bold shrink-0 mt-0.5">•</span>
+                      <span className="flex-1 leading-relaxed text-neutral-700">{itemText}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          }
+
+          // Section headings
+          const isHeading =
+            block.length < 80 &&
+            (block.endsWith(':') ||
+              /^(about|who we are|what you|responsibilities|requirements|qualifications|benefits|perks|preferred|minimum|the role|our values|what we offer|role overview)/i.test(block));
+
+          if (isHeading) {
+            return (
+              <h4
+                key={idx}
+                className="font-bold text-neutral-900 text-xs pt-2.5 pb-0.5 tracking-tight border-b border-neutral-100 uppercase tracking-wide"
+              >
+                {block.replace(/^(\*\*|#+)\s*/, '').replace(/\*\*$/, '')}
+              </h4>
+            );
+          }
+
+          return (
+            <p key={idx} className="text-neutral-700 leading-relaxed">
+              {block}
+            </p>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="h-[calc(100vh-97px)] sticky top-[97px] bg-white border-l border-neutral-200 overflow-y-auto p-6 flex flex-col justify-between text-xs">
       <div className="space-y-6">
@@ -323,8 +431,8 @@ export default function JobDetailPane({
           <h3 className="font-semibold text-neutral-900 text-xs mb-3 uppercase tracking-wider text-neutral-400">
             Job Description
           </h3>
-          <div className="max-w-prose leading-relaxed text-neutral-800 text-xs whitespace-pre-line space-y-3 font-sans">
-            {job.description || 'No description provided by the source board.'}
+          <div className="max-w-prose leading-relaxed text-neutral-800 text-xs font-sans">
+            {renderCleanDescription(job.description)}
           </div>
         </div>
       </div>

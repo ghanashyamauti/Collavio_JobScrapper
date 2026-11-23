@@ -156,9 +156,6 @@ def get_jobs(
     if category:
         query = query.where(Job.category == category)
 
-    if country:
-        query = query.where(Job.country.ilike(f"%{country}%"))
-
     if india_only:
         india_cities = [
             "bengaluru", "bangalore", "mumbai", "delhi", "delhi ncr", "gurugram",
@@ -179,6 +176,49 @@ def get_jobs(
                 Job.location.ilike("%chennai%"),
             )
         )
+    elif country:
+        c_lower = country.strip().lower()
+        if c_lower in ("india", "in"):
+            india_cities = [
+                "bengaluru", "bangalore", "mumbai", "delhi", "delhi ncr", "gurugram",
+                "gurgaon", "noida", "hyderabad", "pune", "chennai", "kolkata", "ahmedabad", "jaipur"
+            ]
+            query = query.where(
+                or_(
+                    Job.country == "India",
+                    Job.city.in_(india_cities),
+                    Job.location.ilike("%india%"),
+                    Job.location.ilike("%bengaluru%"),
+                    Job.location.ilike("%hyderabad%"),
+                    Job.location.ilike("%pune%"),
+                    Job.location.ilike("%mumbai%"),
+                    Job.location.ilike("%delhi%"),
+                    Job.location.ilike("%gurgaon%"),
+                    Job.location.ilike("%noida%"),
+                    Job.location.ilike("%chennai%"),
+                )
+            )
+        elif "remote" in c_lower or "worldwide" in c_lower:
+            query = query.where(
+                or_(
+                    Job.is_remote == True,
+                    Job.country.ilike("%remote%"),
+                    Job.location.ilike("%remote%"),
+                    Job.city.ilike("%remote%"),
+                )
+            )
+        elif c_lower in ("united states", "us", "usa"):
+            query = query.where(
+                or_(
+                    Job.country == "United States",
+                    Job.location.ilike("%united states%"),
+                    Job.location.ilike("%usa%"),
+                    Job.location.ilike("%u.s.%"),
+                    Job.city.in_(["New York", "San Francisco", "Seattle", "Chicago"]),
+                )
+            )
+        else:
+            query = query.where(Job.country.ilike(f"%{country}%"))
 
     if location:
         loc_wild = f"%{location}%"

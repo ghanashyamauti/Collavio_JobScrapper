@@ -328,7 +328,13 @@ export default function App() {
         trackedCount={trackedCount}
         indiaOnly={indiaOnly}
         onToggleIndia={() => {
-          setIndiaOnly(!indiaOnly);
+          const nextVal = !indiaOnly;
+          setIndiaOnly(nextVal);
+          if (nextVal) {
+            setSelectedCountry('India');
+          } else if (selectedCountry === 'India') {
+            setSelectedCountry(null);
+          }
           setPage(1);
         }}
       />
@@ -339,7 +345,13 @@ export default function App() {
         isLoading={!filtersData}
         indiaOnly={indiaOnly}
         onToggleIndia={() => {
-          setIndiaOnly(!indiaOnly);
+          const nextVal = !indiaOnly;
+          setIndiaOnly(nextVal);
+          if (nextVal) {
+            setSelectedCountry('India');
+          } else if (selectedCountry === 'India') {
+            setSelectedCountry(null);
+          }
           setPage(1);
         }}
       />
@@ -358,6 +370,11 @@ export default function App() {
             selectedCountry={selectedCountry}
             onSelectCountry={(c) => {
               setSelectedCountry(c);
+              if (c && c !== 'India') {
+                setIndiaOnly(false);
+              } else if (c === 'India') {
+                setIndiaOnly(true);
+              }
               setPage(1);
             }}
             selectedCity={selectedCity}
@@ -388,6 +405,11 @@ export default function App() {
             indiaOnly={indiaOnly}
             onToggleIndia={(ind) => {
               setIndiaOnly(ind);
+              if (ind) {
+                setSelectedCountry('India');
+              } else if (selectedCountry === 'India') {
+                setSelectedCountry(null);
+              }
               setPage(1);
             }}
             activeOnly={activeOnly}
