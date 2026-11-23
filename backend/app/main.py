@@ -43,20 +43,26 @@ def scheduled_sync_job():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize database tables
-    init_db()
-    logger.info(f"[Startup] Database initialized with engine type: {DB_TYPE}")
+    try:
+        init_db()
+        logger.info(f"[Startup] Database initialized with engine type: {DB_TYPE}")
+    except Exception as e:
+        logger.warning(f"[Startup] Database initialization skipped or deferred: {e}")
 
     # Start APScheduler
     if settings.SYNC_INTERVAL_HOURS > 0:
-        scheduler.add_job(
-            scheduled_sync_job,
-            "interval",
-            hours=settings.SYNC_INTERVAL_HOURS,
-            id="jobpulse_scheduled_sync",
-            replace_existing=True,
-        )
-        scheduler.start()
-        logger.info(f"[Startup] APScheduler started: runs every {settings.SYNC_INTERVAL_HOURS} hours.")
+        try:
+            scheduler.add_job(
+                scheduled_sync_job,
+                "interval",
+                hours=settings.SYNC_INTERVAL_HOURS,
+                id="jobpulse_scheduled_sync",
+                replace_existing=True,
+            )
+            scheduler.start()
+            logger.info(f"[Startup] APScheduler started: runs every {settings.SYNC_INTERVAL_HOURS} hours.")
+        except Exception as e:
+            logger.warning(f"[Startup] APScheduler startup skipped: {e}")
 
     yield
 
@@ -67,8 +73,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="JobPulse API",
-    description="Multi-Source Job Aggregation Platform API",
+    title="Collavio Jobs API",
+    description="Collavio Jobs — Multi-Source Opportunity & Career Aggregator API",
     version="1.0.0",
     lifespan=lifespan,
 )

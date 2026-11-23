@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, SlidersHorizontal, RefreshCw, Activity, ChevronDown, CheckCircle2, Bookmark } from 'lucide-react';
+import { Search, RefreshCw, ChevronDown, Bookmark } from 'lucide-react';
 
 export default function Header({
   activeTab,
@@ -14,7 +14,7 @@ export default function Header({
   const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
   const searchInputRef = useRef(null);
 
-  // Global keyboard shortcut: pressing '/' focuses the search input
+  // Global keyboard shortcut: pressing '/' focuses search
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.key === '/' && document.activeElement !== searchInputRef.current) {
@@ -30,14 +30,20 @@ export default function Header({
     <header className="sticky top-0 z-30 h-14 bg-white border-b border-neutral-200 px-4 sm:px-6 flex items-center justify-between">
       {/* Brand & Mode Switcher */}
       <div className="flex items-center gap-6">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded bg-[#111827] flex items-center justify-center text-white text-xs font-bold tracking-tight">
-            P
+        <div className="flex items-center gap-2.5">
+          <img
+            src="/collavio_favicon.svg"
+            alt="Collavio Logo"
+            className="w-7 h-7 object-contain"
+          />
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-base tracking-tight text-[#0F172A]">
+              Collavio <span className="text-[#F26825]">Jobs</span>
+            </span>
+            <span className="hidden sm:inline-block text-[10px] font-mono uppercase bg-orange-50 text-[#F26825] px-1.5 py-0.5 rounded tracking-wider border border-orange-200 font-semibold">
+              Readiness
+            </span>
           </div>
-          <span className="font-semibold text-base tracking-tight text-[#111827]">JobPulse</span>
-          <span className="hidden sm:inline-block text-[10px] font-mono uppercase bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded tracking-wider border border-neutral-200">
-            Unified
-          </span>
         </div>
 
         {/* View Switcher Tabs */}
@@ -46,8 +52,8 @@ export default function Header({
             onClick={() => setActiveTab('discover')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
               activeTab === 'discover'
-                ? 'bg-[#111827] text-white'
-                : 'text-neutral-600 hover:text-[#111827] hover:bg-neutral-100'
+                ? 'bg-[#0F172A] text-white shadow-sm'
+                : 'text-neutral-600 hover:text-[#0F172A] hover:bg-neutral-100'
             }`}
           >
             Discover Feed
@@ -56,17 +62,17 @@ export default function Header({
             onClick={() => setActiveTab('tracker')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${
               activeTab === 'tracker'
-                ? 'bg-[#111827] text-white'
-                : 'text-neutral-600 hover:text-[#111827] hover:bg-neutral-100'
+                ? 'bg-[#0F172A] text-white shadow-sm'
+                : 'text-neutral-600 hover:text-[#0F172A] hover:bg-neutral-100'
             }`}
           >
             <span>My Tracker</span>
             {trackedCount > 0 && (
               <span
-                className={`tabular-nums text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                className={`tabular-nums text-[10px] px-1.5 py-0.2 rounded-full font-mono font-medium ${
                   activeTab === 'tracker'
-                    ? 'bg-neutral-700 text-white'
-                    : 'bg-neutral-200 text-neutral-800'
+                    ? 'bg-[#F26825] text-white'
+                    : 'bg-orange-100 text-[#F26825]'
                 }`}
               >
                 {trackedCount}
@@ -85,8 +91,8 @@ export default function Header({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search roles, keywords, or skills..."
-            className="w-full bg-[#F7F7F5] border border-neutral-200 rounded-lg pl-8 pr-10 py-1.5 text-xs text-[#111827] placeholder-neutral-400 focus:outline-none focus:border-neutral-400 focus:bg-white transition-colors"
+            placeholder="Search roles, companies, or tech stack (e.g. Full Stack, AI, Marketing)..."
+            className="w-full bg-[#F8FAFC] border border-neutral-200 rounded-lg pl-8 pr-10 py-1.5 text-xs text-[#0F172A] placeholder-neutral-400 focus:outline-none focus:border-[#F26825] focus:bg-white transition-colors"
           />
           <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
             <kbd className="text-[10px] font-mono text-neutral-400 bg-neutral-200 px-1 py-0.5 rounded border border-neutral-300">
@@ -118,15 +124,15 @@ export default function Header({
             <button
               onClick={() => onTriggerSync('fast')}
               disabled={isSyncing}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#111827] bg-white hover:bg-neutral-50 rounded-l-lg transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#F26825] hover:bg-[#D95B1E] rounded-l-lg transition-colors disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-600' : 'text-neutral-500'}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-white' : 'text-white'}`} />
               <span>{isSyncing ? 'Syncing...' : 'Quick Sync'}</span>
             </button>
             <button
               onClick={() => setSyncDropdownOpen(!syncDropdownOpen)}
               disabled={isSyncing}
-              className="px-1.5 py-1.5 text-neutral-500 bg-white hover:bg-neutral-50 rounded-r-lg border-l border-neutral-200 transition-colors disabled:opacity-50"
+              className="px-1.5 py-1.5 text-white bg-[#F26825] hover:bg-[#D95B1E] rounded-r-lg border-l border-orange-400 transition-colors disabled:opacity-50"
             >
               <ChevronDown className="w-3 h-3" />
             </button>
@@ -143,10 +149,10 @@ export default function Header({
                   setSyncDropdownOpen(false);
                   onTriggerSync('fast');
                 }}
-                className="w-full text-left px-3 py-2 hover:bg-neutral-50 flex flex-col"
+                className="w-full text-left px-3 py-2 hover:bg-orange-50/50 flex flex-col"
               >
-                <span className="font-medium text-[#111827]">Quick Sync (APIs & Direct ATS)</span>
-                <span className="text-[11px] text-neutral-500">Greenhouse, Lever, Ashby, Himalayas, Muse (~10s)</span>
+                <span className="font-medium text-[#0F172A]">Quick Sync (APIs & Direct ATS)</span>
+                <span className="text-[11px] text-neutral-500">Greenhouse, Lever, Ashby, Himalayas, Remotive (~10s)</span>
               </button>
               <div className="border-t border-neutral-100 my-1" />
               <button
@@ -154,9 +160,9 @@ export default function Header({
                   setSyncDropdownOpen(false);
                   onTriggerSync('full');
                 }}
-                className="w-full text-left px-3 py-2 hover:bg-neutral-50 flex flex-col"
+                className="w-full text-left px-3 py-2 hover:bg-orange-50/50 flex flex-col"
               >
-                <span className="font-medium text-[#111827]">Full Deep Sync (Include JobSpy)</span>
+                <span className="font-medium text-[#0F172A]">Full Deep Sync (Include JobSpy)</span>
                 <span className="text-[11px] text-neutral-500">LinkedIn, Naukri, Indeed, Glassdoor + ATS (~60s)</span>
               </button>
             </div>

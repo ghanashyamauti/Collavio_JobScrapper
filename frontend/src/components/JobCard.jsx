@@ -85,7 +85,7 @@ export default function JobCard({ job, isSelected, onSelect, onToggleSave }) {
       onClick={onSelect}
       className={`p-4 border-b border-neutral-200 transition-colors cursor-pointer text-xs ${
         isSelected
-          ? 'border-l-2 border-l-[#111827] bg-[#F9F9F8]'
+          ? 'border-l-2 border-l-[#F26825] bg-[#FFFBF7]'
           : 'border-l-2 border-l-transparent bg-white hover:bg-[#FAFAF9]'
       }`}
     >
@@ -115,7 +115,7 @@ export default function JobCard({ job, isSelected, onSelect, onToggleSave }) {
           title={job.is_saved ? 'Remove bookmark' : 'Bookmark job'}
         >
           <Bookmark
-            className={`w-4 h-4 ${job.is_saved ? 'fill-[#111827] text-[#111827]' : ''}`}
+            className={`w-4 h-4 ${job.is_saved ? 'fill-[#F26825] text-[#F26825]' : ''}`}
           />
         </button>
       </div>

@@ -107,11 +107,11 @@ export default function JobDetailPane({
 
             <button
               onClick={() => onToggleSave(job)}
-              className="p-1.5 rounded-lg border border-neutral-200 text-neutral-600 hover:text-[#111827] hover:bg-neutral-50 transition-colors shrink-0"
+              className="p-1.5 rounded-lg border border-neutral-200 text-neutral-600 hover:text-[#F26825] hover:bg-neutral-50 transition-colors shrink-0"
               title={job.is_saved ? 'Remove bookmark' : 'Bookmark job'}
             >
               <Bookmark
-                className={`w-4 h-4 ${job.is_saved ? 'fill-[#111827] text-[#111827]' : ''}`}
+                className={`w-4 h-4 ${job.is_saved ? 'fill-[#F26825] text-[#F26825]' : ''}`}
               />
             </button>
           </div>
@@ -218,7 +218,7 @@ export default function JobDetailPane({
               href={primarySource.apply_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full bg-[#111827] text-white hover:bg-neutral-800 rounded-lg py-2.5 px-4 font-medium flex items-center justify-center gap-2 text-xs transition-colors"
+              className="w-full bg-[#F26825] text-white hover:bg-[#D95B1E] rounded-lg py-2.5 px-4 font-semibold flex items-center justify-center gap-2 text-xs transition-colors shadow-sm"
             >
               <span>Apply on {primarySource.source_name.toUpperCase()}</span>
               <ExternalLink className="w-3.5 h-3.5" />

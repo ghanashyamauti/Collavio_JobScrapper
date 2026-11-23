@@ -209,8 +209,11 @@ export default function SyncTelemetryDrawer({
 
           {/* Footer */}
           <div className="p-4 border-t border-neutral-200 bg-neutral-50 text-neutral-500 text-[11px] flex items-center justify-between">
-            <span>JobPulse Engine v1.0</span>
-            <span className="font-mono">psycopg3 + FastAPI</span>
+            <span className="font-medium text-neutral-700">Collavio Jobs Engine v1.0</span>
+            <span className="font-mono text-emerald-700 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              Neon Cloud PostgreSQL
+            </span>
           </div>
         </div>
       </div>

@@ -115,7 +115,8 @@ def test_multi_source_deduplication_and_merging():
     db.close()
 
 
-def test_api_endpoints_and_tracking():
+def test_api_endpoints_and_tracking(monkeypatch):
+    monkeypatch.setattr("app.main.run_ingestion", lambda *args, **kwargs: [])
     client = TestClient(app)
 
     # 1. Health endpoint

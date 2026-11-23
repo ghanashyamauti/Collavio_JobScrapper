@@ -2,7 +2,7 @@ import logging
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple, Dict, Any
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select, and_, or_
 from rapidfuzz import fuzz
 
@@ -44,6 +44,7 @@ def get_sync_telemetry() -> Dict[str, Any]:
 def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -> Tuple[int, int, int]:
     """
     Normalizes and ingests raw jobs using 3-tier deduplication and multi-source merging.
+    Optimized with in-memory caching to eliminate per-job network latency on remote PostgreSQL.
     Returns (jobs_found, new_jobs, duplicates_merged).
     """
     jobs_found = len(raw_jobs)
@@ -52,7 +53,23 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
 
     fourteen_days_ago = datetime.now(timezone.utc) - timedelta(days=14)
 
-    for raw in raw_jobs:
+    # Pre-load existing records in memory to eliminate remote roundtrips
+    existing_jobs_by_fp: Dict[str, Job] = {}
+    existing_jobs_by_source_url: Dict[Tuple[str, str], Job] = {}
+    existing_jobs_by_source_extid: Dict[Tuple[str, str], Job] = {}
+    jobs_by_company_city: Dict[Tuple[str, str], List[Job]] = {}
+
+    all_existing_jobs = db.execute(select(Job).options(selectinload(Job.sources))).scalars().all()
+    for job in all_existing_jobs:
+        existing_jobs_by_fp[job.fingerprint_hash] = job
+        comp_key = (job.normalized_company, (job.city or "").lower())
+        jobs_by_company_city.setdefault(comp_key, []).append(job)
+        for src in job.sources:
+            existing_jobs_by_source_url[(src.source_name, src.apply_url)] = job
+            if src.external_id:
+                existing_jobs_by_source_extid[(src.source_name, src.external_id)] = job
+
+    for idx, raw in enumerate(raw_jobs):
         if not raw.title or not raw.company or not raw.apply_url:
             continue
 
@@ -68,39 +85,27 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
         min_exp, max_exp = parse_experience(raw.title, clean_desc, raw.min_exp, raw.max_exp)
         is_explicit_exp = (raw.min_exp is not None or raw.max_exp is not None)
         fingerprint = generate_fingerprint(norm_comp, norm_title, standard_city)
+        comp_city_key = (norm_comp, (standard_city or "").lower())
 
         # -------------------------------------------------------------
         # Tier 1: Exact Source Match (same source & apply_url/external_id)
         # -------------------------------------------------------------
-        tier1_conditions = [JobSource.source_name == raw.source_name]
-        url_match = (JobSource.apply_url == canonical_url)
-        if raw.external_id:
-            tier1_conditions.append(or_(url_match, JobSource.external_id == raw.external_id))
-        else:
-            tier1_conditions.append(url_match)
+        existing_job = existing_jobs_by_source_url.get((raw.source_name, canonical_url))
+        if not existing_job and raw.external_id:
+            existing_job = existing_jobs_by_source_extid.get((raw.source_name, raw.external_id))
 
-        existing_source = db.execute(
-            select(JobSource).where(and_(*tier1_conditions))
-        ).scalars().first()
-
-        if existing_source:
+        if existing_job:
             duplicates_merged += 1
-            # Backfill metadata on existing job if richer
-            job = existing_source.job
-            if job:
-                _backfill_job_metadata(
-                    job, clean_desc, raw.salary_min, raw.salary_max, raw.currency,
-                    min_exp, max_exp, is_explicit_exp
-                )
+            _backfill_job_metadata(
+                existing_job, clean_desc, raw.salary_min, raw.salary_max, raw.currency,
+                min_exp, max_exp, is_explicit_exp
+            )
             continue
 
         # -------------------------------------------------------------
         # Tier 2: Canonical Fingerprint Match
         # -------------------------------------------------------------
-        existing_job = db.execute(
-            select(Job).where(Job.fingerprint_hash == fingerprint)
-        ).scalars().first()
-
+        existing_job = existing_jobs_by_fp.get(fingerprint)
         if existing_job:
             duplicates_merged += 1
             _attach_source_and_backfill(
@@ -108,23 +113,21 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
                 clean_desc, raw.salary_min, raw.salary_max, raw.currency, min_exp, max_exp,
                 is_explicit_exp
             )
+            existing_jobs_by_source_url[(raw.source_name, canonical_url)] = existing_job
+            if raw.external_id:
+                existing_jobs_by_source_extid[(raw.source_name, raw.external_id)] = existing_job
             continue
 
         # -------------------------------------------------------------
         # Tier 3: Fuzzy Cross-Board Match (rapidfuzz token_sort_ratio >= 86)
         # -------------------------------------------------------------
-        recent_candidates = db.execute(
-            select(Job).where(
-                and_(
-                    Job.normalized_company == norm_comp,
-                    Job.city == standard_city,
-                )
-            )
-        ).scalars().all()
-
+        recent_candidates = jobs_by_company_city.get(comp_city_key, [])
         fuzzy_matched_job = None
         for candidate in recent_candidates:
-            # Check 14-day window if created_at exists
+            # Quick length heuristic: if length difference is too high, token_sort_ratio cannot meet threshold
+            if abs(len(norm_title) - len(candidate.normalized_title)) > 15:
+                continue
+
             if candidate.created_at:
                 c_created = candidate.created_at
                 if c_created.tzinfo is None:
@@ -132,7 +135,7 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
                 if c_created < fourteen_days_ago:
                     continue
 
-            ratio = fuzz.token_sort_ratio(norm_title, candidate.normalized_title)
+            ratio = fuzz.token_sort_ratio(norm_title, candidate.normalized_title, score_cutoff=86)
             if ratio >= 86:
                 fuzzy_matched_job = candidate
                 break
@@ -144,6 +147,9 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
                 clean_desc, raw.salary_min, raw.salary_max, raw.currency, min_exp, max_exp,
                 is_explicit_exp
             )
+            existing_jobs_by_source_url[(raw.source_name, canonical_url)] = fuzzy_matched_job
+            if raw.external_id:
+                existing_jobs_by_source_extid[(raw.source_name, raw.external_id)] = fuzzy_matched_job
             continue
 
         # Clean job_type
@@ -179,17 +185,29 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
-        db.add(new_job)
-        db.flush()
-
         new_source = JobSource(
-            job_id=new_job.id,
+            job=new_job,
             source_name=raw.source_name,
             external_id=raw.external_id,
             apply_url=canonical_url,
         )
-        db.add(new_source)
+        new_job.sources.append(new_source)
+        db.add(new_job)
+
+        # Register in in-memory lookups
+        existing_jobs_by_fp[fingerprint] = new_job
+        existing_jobs_by_source_url[(raw.source_name, canonical_url)] = new_job
+        if raw.external_id:
+            existing_jobs_by_source_extid[(raw.source_name, raw.external_id)] = new_job
+        jobs_by_company_city.setdefault(comp_city_key, []).append(new_job)
+
         new_jobs += 1
+
+        if new_jobs % 250 == 0:
+            db.commit()
+
+        if (idx + 1) % 500 == 0 or (idx + 1) == jobs_found:
+            logger.info(f"[Pipeline] [{collector_name}] Processed {idx + 1}/{jobs_found} jobs ({new_jobs} new, {duplicates_merged} merged)...")
 
     db.commit()
     return jobs_found, new_jobs, duplicates_merged
@@ -237,29 +255,16 @@ def _attach_source_and_backfill(
     is_explicit_exp: bool = False,
 ) -> None:
     """Attaches a new JobSource record to an existing job if not already present, and enriches metadata."""
-    existing_src = db.execute(
-        select(JobSource).where(
-            and_(
-                JobSource.job_id == job.id,
-                JobSource.source_name == source_name,
-            )
-        )
-    ).scalars().first()
-
-    # Also check pending objects in session
-    if not existing_src:
-        for obj in db.new:
-            if isinstance(obj, JobSource) and obj.job_id == job.id and obj.source_name == source_name:
-                existing_src = obj
-                break
+    existing_src = next((s for s in job.sources if s.source_name == source_name), None)
 
     if not existing_src:
         new_src = JobSource(
-            job_id=job.id,
+            job=job,
             source_name=source_name,
             external_id=external_id,
             apply_url=apply_url,
         )
+        job.sources.append(new_src)
         db.add(new_src)
 
     _backfill_job_metadata(job, description, salary_min, salary_max, currency, min_exp, max_exp, is_explicit_exp)
