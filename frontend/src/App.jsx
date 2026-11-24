@@ -201,7 +201,7 @@ export default function App() {
             queryClient.invalidateQueries({ queryKey: ['jobs'] });
             queryClient.invalidateQueries({ queryKey: ['filters'] });
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     }
   }, [syncStatus, queryClient]);

@@ -146,14 +146,12 @@ export default function FilterSidebar({
               role="switch"
               aria-checked={indiaOnly}
               onClick={() => onToggleIndia(!indiaOnly)}
-              className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                indiaOnly ? 'bg-[#F26825]' : 'bg-neutral-200'
-              }`}
+              className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${indiaOnly ? 'bg-[#F26825]' : 'bg-neutral-200'
+                }`}
             >
               <span
-                className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  indiaOnly ? 'translate-x-4' : 'translate-x-0'
-                }`}
+                className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${indiaOnly ? 'translate-x-4' : 'translate-x-0'
+                  }`}
               />
             </button>
           </div>
@@ -166,14 +164,12 @@ export default function FilterSidebar({
               role="switch"
               aria-checked={remoteOnly}
               onClick={() => onToggleRemote(!remoteOnly)}
-              className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                remoteOnly ? 'bg-[#111827]' : 'bg-neutral-200'
-              }`}
+              className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${remoteOnly ? 'bg-[#111827]' : 'bg-neutral-200'
+                }`}
             >
               <span
-                className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  remoteOnly ? 'translate-x-4' : 'translate-x-0'
-                }`}
+                className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${remoteOnly ? 'translate-x-4' : 'translate-x-0'
+                  }`}
               />
             </button>
           </div>
@@ -189,14 +185,12 @@ export default function FilterSidebar({
               role="switch"
               aria-checked={activeOnly}
               onClick={() => onToggleActive(!activeOnly)}
-              className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                activeOnly ? 'bg-emerald-600' : 'bg-neutral-200'
-              }`}
+              className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${activeOnly ? 'bg-emerald-600' : 'bg-neutral-200'
+                }`}
             >
               <span
-                className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  activeOnly ? 'translate-x-4' : 'translate-x-0'
-                }`}
+                className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${activeOnly ? 'translate-x-4' : 'translate-x-0'
+                  }`}
               />
             </button>
           </div>
@@ -213,11 +207,10 @@ export default function FilterSidebar({
                 <button
                   key={tier.label}
                   onClick={() => onSelectExp(isSelected ? null : tier)}
-                  className={`px-2 py-1 text-[11px] rounded font-medium border text-center transition-colors ${
-                    isSelected
+                  className={`px-2 py-1 text-[11px] rounded font-medium border text-center transition-colors ${isSelected
                       ? 'bg-[#111827] text-white border-[#111827]'
                       : 'bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50'
-                  }`}
+                    }`}
                 >
                   {tier.label}
                 </button>
@@ -247,11 +240,10 @@ export default function FilterSidebar({
                   <button
                     key={c.name}
                     onClick={() => onSelectCountry(isSelected ? null : c.name)}
-                    className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
-                      isSelected
+                    className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${isSelected
                         ? 'bg-neutral-900 font-semibold text-white'
                         : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-1.5 truncate pr-1">
                       <span>{c.flag || '🌍'}</span>
@@ -259,9 +251,8 @@ export default function FilterSidebar({
                     </div>
                     {c.count > 0 && (
                       <span
-                        className={`font-mono text-[10px] tabular-nums ${
-                          isSelected ? 'text-white/80' : 'text-neutral-400'
-                        }`}
+                        className={`font-mono text-[10px] tabular-nums ${isSelected ? 'text-white/80' : 'text-neutral-400'
+                          }`}
                       >
                         {c.count}
                       </span>
@@ -310,17 +301,15 @@ export default function FilterSidebar({
                   <button
                     key={city.name}
                     onClick={() => onSelectCity(isSelected ? null : city.name)}
-                    className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
-                      isSelected
+                    className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${isSelected
                         ? 'bg-neutral-900 font-semibold text-white'
                         : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-                    }`}
+                      }`}
                   >
                     <span className="truncate pr-1">{city.name}</span>
                     <span
-                      className={`font-mono text-[10px] tabular-nums ${
-                        isSelected ? 'text-white/80' : 'text-neutral-400'
-                      }`}
+                      className={`font-mono text-[10px] tabular-nums ${isSelected ? 'text-white/80' : 'text-neutral-400'
+                        }`}
                     >
                       {city.count}
                     </span>
@@ -351,17 +340,15 @@ export default function FilterSidebar({
                 <button
                   key={cat.name}
                   onClick={() => onSelectCategory(isSelected ? null : cat.name)}
-                  className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
-                    isSelected
+                  className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${isSelected
                       ? 'bg-neutral-900 font-semibold text-white'
                       : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-                  }`}
+                    }`}
                 >
                   <span className="truncate pr-1">{cat.name}</span>
                   <span
-                    className={`font-mono text-[10px] tabular-nums ${
-                      isSelected ? 'text-white/80' : 'text-neutral-400'
-                    }`}
+                    className={`font-mono text-[10px] tabular-nums ${isSelected ? 'text-white/80' : 'text-neutral-400'
+                      }`}
                   >
                     {cat.count}
                   </span>
@@ -401,17 +388,15 @@ export default function FilterSidebar({
                 <button
                   key={comp.name}
                   onClick={() => onSelectCompany(isSelected ? null : comp.name)}
-                  className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
-                    isSelected
+                  className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${isSelected
                       ? 'bg-neutral-900 font-semibold text-white'
                       : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-                  }`}
+                    }`}
                 >
                   <span className="truncate pr-1">{comp.name}</span>
                   <span
-                    className={`font-mono text-[10px] tabular-nums ${
-                      isSelected ? 'text-white/80' : 'text-neutral-400'
-                    }`}
+                    className={`font-mono text-[10px] tabular-nums ${isSelected ? 'text-white/80' : 'text-neutral-400'
+                      }`}
                   >
                     {comp.count}
                   </span>
@@ -442,11 +427,10 @@ export default function FilterSidebar({
                 <button
                   key={src.name}
                   onClick={() => onSelectSource(isSelected ? null : src.name)}
-                  className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${
-                    isSelected
+                  className={`w-full flex items-center justify-between px-2 py-1 rounded text-left transition-colors ${isSelected
                       ? 'bg-neutral-900 font-semibold text-white'
                       : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-2 truncate pr-1">
                     <span
@@ -456,9 +440,8 @@ export default function FilterSidebar({
                     <span className="capitalize truncate">{src.name}</span>
                   </div>
                   <span
-                    className={`font-mono text-[10px] tabular-nums ${
-                      isSelected ? 'text-white/80' : 'text-neutral-400'
-                    }`}
+                    className={`font-mono text-[10px] tabular-nums ${isSelected ? 'text-white/80' : 'text-neutral-400'
+                      }`}
                   >
                     {src.count}
                   </span>

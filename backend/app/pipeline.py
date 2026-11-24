@@ -62,12 +62,17 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
     seen_job_ids: Set[int] = set()
     scraped_companies: Set[str] = set()
 
-    all_existing_jobs = db.execute(select(Job).options(selectinload(Job.sources))).scalars().all()
+    all_existing_jobs = db.execute(select(Job)).scalars().all()
+    job_by_id = {job.id: job for job in all_existing_jobs}
     for job in all_existing_jobs:
         existing_jobs_by_fp[job.fingerprint_hash] = job
         comp_key = (job.normalized_company, (job.city or "").lower())
         jobs_by_company_city.setdefault(comp_key, []).append(job)
-        for src in job.sources:
+
+    all_existing_sources = db.execute(select(JobSource)).scalars().all()
+    for src in all_existing_sources:
+        job = job_by_id.get(src.job_id)
+        if job:
             existing_jobs_by_source_url[(src.source_name, src.apply_url)] = job
             if src.external_id:
                 existing_jobs_by_source_extid[(src.source_name, src.external_id)] = job
@@ -221,6 +226,14 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
         new_job.sources.append(new_source)
         db.add(new_job)
 
+        # Use database SAVEPOINT to isolate any individual constraint conflict
+        try:
+            with db.begin_nested():
+                db.flush([new_job, new_source])
+        except Exception:
+            existing_jobs_by_fp[fingerprint] = True
+            continue
+
         # Register in in-memory lookups
         existing_jobs_by_fp[fingerprint] = new_job
         existing_jobs_by_source_url[(raw.source_name, canonical_url)] = new_job
@@ -232,7 +245,11 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
         scraped_companies.add(norm_comp)
 
         if new_jobs % 250 == 0:
-            db.commit()
+            try:
+                db.commit()
+            except Exception as commit_err:
+                db.rollback()
+                logger.warning(f"[Pipeline] Batch commit error: {commit_err}")
 
         if (idx + 1) % 500 == 0 or (idx + 1) == jobs_found:
             logger.info(f"[Pipeline] [{collector_name}] Processed {idx + 1}/{jobs_found} jobs ({new_jobs} new, {duplicates_merged} merged)...")
@@ -253,7 +270,7 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
                 # Verify that this job was sourced from this ATS scraper
                 has_ats_source = any(
                     s.source_name in ("ats_direct", "dynamic_company", collector_name)
-                    for s in job.sources
+                    for s in getattr(job, "sources", [])
                 )
                 if has_ats_source:
                     job.is_active = False
@@ -265,7 +282,12 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
                 f"across {len(scraped_companies)} companies."
             )
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception as commit_err:
+        db.rollback()
+        logger.warning(f"[Pipeline] Final commit handled conflict: {commit_err}")
+
     return jobs_found, new_jobs, duplicates_merged
 
 

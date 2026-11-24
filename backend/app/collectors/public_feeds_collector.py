@@ -233,7 +233,7 @@ class PublicFeedsCollector(BaseCollector):
             # 5. Arbeitnow API (Multi-page bulk harvest)
             before_arbeitnow = len(jobs)
             try:
-                for page in range(1, 26):  # Fetch up to 25 pages (up to 7,500 jobs)
+                for page in range(1, 36):  # Fetch up to 35 pages (~10,500 live jobs)
                     url = f"https://www.arbeitnow.com/api/job-board-api?page={page}"
                     resp = client.get(url)
                     if resp.status_code == 200:
