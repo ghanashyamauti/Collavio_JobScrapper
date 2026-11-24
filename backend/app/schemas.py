@@ -38,6 +38,7 @@ class JobOut(BaseModel):
     is_saved: bool
     application_status: str
     notes: Optional[str] = None
+    is_live_scraped: bool = False
     posted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
@@ -50,6 +51,14 @@ class JobTrackUpdate(BaseModel):
     is_saved: Optional[bool] = None
     application_status: Optional[str] = None
     notes: Optional[str] = None
+
+
+class JobDetailResponse(BaseModel):
+    id: int
+    description: Optional[str] = None
+    is_active: bool = True
+    status: str = "cached"  # cached, live_fetched, expired, unavailable
+    apply_url: Optional[str] = None
 
 
 class JobListResponse(BaseModel):
@@ -74,6 +83,9 @@ class KpiMetrics(BaseModel):
     applied_jobs: int
     active_sources: int
     last_synced_at: Optional[datetime] = None
+
+
+StatsResponse = KpiMetrics
 
 
 class FiltersResponse(BaseModel):
@@ -130,3 +142,13 @@ class HealthResponse(BaseModel):
 
 class CompanyHarvestRequest(BaseModel):
     company: str
+
+
+class LiveSearchResponse(BaseModel):
+    query: Optional[str] = None
+    location: Optional[str] = None
+    country: Optional[str] = None
+    cached: bool = False
+    total_found: int
+    jobs: List[JobOut] = Field(default_factory=list)
+

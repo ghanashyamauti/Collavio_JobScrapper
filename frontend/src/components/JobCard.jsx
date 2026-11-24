@@ -1,25 +1,6 @@
 import React from 'react';
 import { Bookmark, MapPin, Briefcase, DollarSign, Clock, Check } from 'lucide-react';
-
-const SOURCE_COLORS = {
-  linkedin: '#0A66C2',
-  naukri: '#275DF5',
-  indeed: '#2164F3',
-  glassdoor: '#0CAA41',
-  greenhouse: '#00B268',
-  lever: '#4C44EC',
-  ashby: '#FF5722',
-  himalayas: '#6366F1',
-  themuse: '#00A389',
-  remotive: '#10B981',
-  remoteok: '#FF4742',
-  arbeitnow: '#8B5CF6',
-  jobicy: '#EC4899',
-  weworkremotely: '#F59E0B',
-  adzuna: '#22C55E',
-  jooble: '#F97316',
-  jsearch: '#3B82F6',
-};
+import { SOURCE_COLORS, formatSourceName } from './FilterSidebar.jsx';
 
 const STATUS_CONFIG = {
   saved: { label: 'Saved', color: 'bg-neutral-100 text-neutral-700 border-neutral-300' },
@@ -187,13 +168,13 @@ export default function JobCard({ job, isSelected, onSelect, onToggleSave }) {
               <span
                 key={s.id}
                 className="inline-flex items-center gap-1 bg-white border border-neutral-200 text-neutral-700 text-[10px] font-medium px-1.5 py-0.5 rounded"
-                title={`Available on ${s.source_name}`}
+                title={`Available on ${formatSourceName(s.source_name)}`}
               >
                 <span
                   className="w-1.5 h-1.5 rounded-full shrink-0"
                   style={{ backgroundColor: dotColor }}
                 />
-                <span className="capitalize">{s.source_name}</span>
+                <span className="truncate">{formatSourceName(s.source_name)}</span>
               </span>
             );
           })}

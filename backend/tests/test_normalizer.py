@@ -153,12 +153,48 @@ def test_fingerprint_generation():
 
 
 def test_detect_country():
-    from app.normalizer import detect_country
+    from app.normalizer import detect_country, detect_platform_source
 
+    # India roles
     assert detect_country("Bengaluru, India", "Bengaluru") == "India"
     assert detect_country("Pune, Maharashtra", "Pune") == "India"
     assert detect_country("Hyderabad, Telangana", "Hyderabad") == "India"
     assert detect_country("Delhi NCR", "Delhi NCR") == "India"
+
+    # United States
     assert detect_country("San Francisco, CA", "San Francisco") == "United States"
+    assert detect_country("Austin, TX", "Austin") == "United States"
+    assert detect_country("New York, NY", "New York") == "United States"
+    assert detect_country("Indianapolis, IN", "Indianapolis") == "United States"
+
+    # Global Countries
+    assert detect_country("Toronto, ON, Canada", "Toronto") == "Canada"
+    assert detect_country("Vancouver, BC", "Vancouver") == "Canada"
     assert detect_country("London, UK", "London") == "United Kingdom"
+    assert detect_country("Berlin, Germany", "Berlin") == "Germany"
+    assert detect_country("Munich", "Munich") == "Germany"
+    assert detect_country("Paris, France", "Paris") == "France"
+    assert detect_country("Amsterdam, Netherlands", "Amsterdam") == "Netherlands"
+    assert detect_country("Dublin, Ireland", "Dublin") == "Ireland"
+    assert detect_country("Sydney, NSW, Australia", "Sydney") == "Australia"
+    assert detect_country("Melbourne, Australia", "Melbourne") == "Australia"
+    assert detect_country("Singapore", "Singapore") == "Singapore"
+    assert detect_country("Dubai, UAE", "Dubai") == "United Arab Emirates"
+    assert detect_country("Tokyo, Japan", "Tokyo") == "Japan"
+    assert detect_country("Sao Paulo, Brazil", "Sao Paulo") == "Brazil"
+
+    # Remote
     assert detect_country("Remote, Worldwide", "Remote", is_remote=True) == "Remote / Worldwide"
+    assert detect_country("Anywhere", "Remote", is_remote=True) == "Remote / Worldwide"
+
+
+def test_detect_platform_source():
+    from app.normalizer import detect_platform_source
+
+    assert detect_platform_source("ats_direct", "https://boards.greenhouse.io/stripe/jobs/123") == "greenhouse"
+    assert detect_platform_source("ats_direct", "https://jobs.lever.co/netflix/456") == "lever"
+    assert detect_platform_source("ats_direct", "https://jobs.ashbyhq.com/openai/789") == "ashby"
+    assert detect_platform_source("ats_direct", "https://jobs.smartrecruiters.com/Acme/001") == "smartrecruiters"
+    assert detect_platform_source("ats_direct", "https://apply.workable.com/spotify/j/123") == "workable"
+    assert detect_platform_source("public_feeds", "https://www.arbeitnow.com/view/developer-123") == "arbeitnow"
+    assert detect_platform_source("public_feeds", "https://himalayas.app/companies/test/jobs/lead") == "himalayas"

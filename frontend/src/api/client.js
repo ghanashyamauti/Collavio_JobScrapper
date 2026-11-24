@@ -25,6 +25,12 @@ export async function fetchJobById(jobId) {
   return res.json();
 }
 
+export async function fetchJobDetail(jobId) {
+  const res = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/detail`);
+  if (!res.ok) throw new Error(`Failed to fetch job detail #${jobId}`);
+  return res.json();
+}
+
 export async function updateJobTracking(jobId, payload) {
   const res = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/track`, {
     method: 'PATCH',
@@ -35,12 +41,43 @@ export async function updateJobTracking(jobId, payload) {
   return res.json();
 }
 
-export async function fetchFilters(country = null) {
-  const url = country
-    ? `${API_BASE_URL}/api/filters?country=${encodeURIComponent(country)}`
-    : `${API_BASE_URL}/api/filters`;
+export async function fetchStats() {
+  const res = await fetch(`${API_BASE_URL}/api/stats`);
+  if (!res.ok) throw new Error(`Failed to fetch stats: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchFilters(params = {}) {
+  const query = new URLSearchParams();
+  if (typeof params === 'string') {
+    query.set('country', params);
+  } else if (typeof params === 'object' && params !== null) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '' && value !== false) {
+        query.set(key, value);
+      }
+    });
+  }
+
+  const qs = query.toString();
+  const url = qs ? `${API_BASE_URL}/api/filters?${qs}` : `${API_BASE_URL}/api/filters`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch filter facets: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchLiveSearch(params = {}, options = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '' && value !== false) {
+      query.set(key, value);
+    }
+  });
+
+  const res = await fetch(`${API_BASE_URL}/api/jobs/live-search?${query.toString()}`, {
+    signal: options.signal,
+  });
+  if (!res.ok) throw new Error(`Live search failed: ${res.statusText}`);
   return res.json();
 }
 

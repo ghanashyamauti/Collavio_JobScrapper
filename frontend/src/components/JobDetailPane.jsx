@@ -16,6 +16,8 @@ import {
   ArrowLeft,
   X,
 } from 'lucide-react';
+import { fetchJobDetail } from '../api/client.js';
+import { formatSourceName } from './FilterSidebar.jsx';
 
 const STATUS_OPTIONS = [
   { value: 'none', label: 'Not Tracked' },
@@ -39,17 +41,42 @@ export default function JobDetailPane({
 }) {
   const [notes, setNotes] = useState('');
   const [showNotes, setShowNotes] = useState(false);
+  const [liveDesc, setLiveDesc] = useState(job?.description || null);
+  const [isLoadingDesc, setIsLoadingDesc] = useState(false);
+  const [isJobExpired, setIsJobExpired] = useState(job ? !job.is_active : false);
 
   useEffect(() => {
     if (job) {
       setNotes(job.notes || '');
       setShowNotes(Boolean(job.notes));
+      setLiveDesc(job.description || null);
+      setIsJobExpired(!job.is_active);
+
+      // On-demand fetch if description is not yet populated
+      if (!job.description) {
+        setIsLoadingDesc(true);
+        fetchJobDetail(job.id)
+          .then((res) => {
+            if (res.status === 'expired' || res.is_active === false) {
+              setIsJobExpired(true);
+              onMarkExpired?.(job.id);
+            } else if (res.description) {
+              setLiveDesc(res.description);
+            }
+          })
+          .catch((err) => {
+            console.warn('[JobDetail] On-demand fetch error:', err);
+          })
+          .finally(() => {
+            setIsLoadingDesc(false);
+          });
+      }
     }
   }, [job?.id]);
 
   if (!job) {
     return (
-      <div className="h-[calc(100vh-97px)] sticky top-[97px] bg-white border-l border-neutral-200 flex flex-col items-center justify-center p-8 text-center text-neutral-400 text-xs">
+      <div className="h-full bg-white border-l border-neutral-200 flex flex-col items-center justify-center p-8 text-center text-neutral-400 text-xs">
         <FileText className="w-10 h-10 mb-3 text-neutral-300 stroke-[1.5]" />
         <h4 className="font-semibold text-neutral-700 text-sm mb-1">No Job Selected</h4>
         <p className="max-w-xs text-neutral-500 leading-relaxed">
@@ -209,7 +236,7 @@ export default function JobDetailPane({
   };
 
   return (
-    <div className="h-full lg:h-[calc(100vh-97px)] lg:sticky lg:top-[97px] bg-white border-l border-neutral-200 overflow-y-auto p-4 sm:p-6 flex flex-col justify-between text-xs">
+    <div className="h-full bg-white border-l border-neutral-200 overflow-y-auto p-4 sm:p-6 flex flex-col justify-between text-xs">
       <div className="space-y-6">
         {/* Mobile Back / Close Navigation Bar */}
         {onClose && (
@@ -379,7 +406,7 @@ export default function JobDetailPane({
               rel="noopener noreferrer"
               className="w-full bg-[#F26825] text-white hover:bg-[#D95B1E] rounded-lg py-2.5 px-4 font-semibold flex items-center justify-center gap-2 text-xs transition-colors shadow-sm"
             >
-              <span>Apply on {primarySource.source_name.toUpperCase()}</span>
+              <span>Apply on {formatSourceName(primarySource.source_name)}</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           )}
@@ -440,7 +467,7 @@ export default function JobDetailPane({
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-700 font-medium text-[11px] transition-colors"
                   >
-                    <span className="capitalize">{s.source_name}</span>
+                    <span>{formatSourceName(s.source_name)}</span>
                     <ExternalLink className="w-3 h-3 text-neutral-400" />
                   </a>
                 ))}
@@ -451,12 +478,36 @@ export default function JobDetailPane({
 
         {/* Full Editorial Description */}
         <div className="pt-4 border-t border-neutral-200 pb-16 lg:pb-0">
-          <h3 className="font-semibold text-neutral-900 text-xs mb-3 uppercase tracking-wider text-neutral-400">
-            Job Description
-          </h3>
-          <div className="max-w-prose leading-relaxed text-neutral-800 text-xs font-sans">
-            {renderCleanDescription(job.description)}
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-neutral-900 text-xs uppercase tracking-wider text-neutral-400">
+              Job Description
+            </h3>
+            {isLoadingDesc && (
+              <span className="flex items-center gap-1.5 text-[10px] text-[#F26825] font-medium animate-pulse">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span>Loading live details...</span>
+              </span>
+            )}
           </div>
+
+          {isJobExpired ? (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-xs flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+              <span>This role has been closed by the employer on their career portal.</span>
+            </div>
+          ) : isLoadingDesc ? (
+            <div className="space-y-2.5 animate-pulse py-2">
+              <div className="h-3.5 bg-neutral-200 rounded w-3/4"></div>
+              <div className="h-3 bg-neutral-100 rounded w-full"></div>
+              <div className="h-3 bg-neutral-100 rounded w-5/6"></div>
+              <div className="h-3 bg-neutral-100 rounded w-4/6"></div>
+              <div className="h-3 bg-neutral-100 rounded w-2/3"></div>
+            </div>
+          ) : (
+            <div className="max-w-prose leading-relaxed text-neutral-800 text-xs font-sans">
+              {renderCleanDescription(liveDesc || job.description)}
+            </div>
+          )}
         </div>
       </div>
 

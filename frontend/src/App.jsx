@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import Header from './components/Header.jsx';
 import StatsStrip from './components/StatsStrip.jsx';
 import FilterSidebar from './components/FilterSidebar.jsx';
@@ -11,7 +11,9 @@ import LiveHarvestModal from './components/LiveHarvestModal.jsx';
 import {
   fetchJobs,
   fetchFilters,
+  fetchStats,
   fetchSyncStatus,
+  fetchLiveSearch,
   updateJobTracking,
   triggerSync,
   verifyJobLiveness,
@@ -36,6 +38,7 @@ export default function App() {
       source: params.get('source') || null,
       min_exp: params.get('min_exp') ? Number(params.get('min_exp')) : null,
       max_exp: params.get('max_exp') ? Number(params.get('max_exp')) : null,
+      exp_years: params.get('exp_years') ? Number(params.get('exp_years')) : null,
       remote_only: params.get('remote_only') === 'true',
       india_only: params.get('india_only') === 'true',
       active_only: params.get('active_only') !== 'false',
@@ -56,11 +59,21 @@ export default function App() {
   const [selectedCity, setSelectedCity] = useState(initial.location);
   const [selectedCompany, setSelectedCompany] = useState(initial.company);
   const [selectedSource, setSelectedSource] = useState(initial.source);
-  const [selectedExp, setSelectedExp] = useState(
-    initial.min_exp !== null || initial.max_exp !== null
-      ? { min: initial.min_exp, max: initial.max_exp }
-      : null
-  );
+  const [selectedExp, setSelectedExp] = useState(() => {
+    if (initial.exp_years !== null) {
+      return {
+        min: null,
+        max: null,
+        exact: initial.exp_years,
+        isCustom: true,
+        label: `${initial.exp_years} yr${initial.exp_years === 1 ? '' : 's'}`,
+      };
+    }
+    if (initial.min_exp !== null || initial.max_exp !== null) {
+      return { min: initial.min_exp, max: initial.max_exp };
+    }
+    return null;
+  });
   const [remoteOnly, setRemoteOnly] = useState(initial.remote_only);
   const [indiaOnly, setIndiaOnly] = useState(initial.india_only);
   const [activeOnly, setActiveOnly] = useState(initial.active_only);
@@ -95,10 +108,14 @@ export default function App() {
     if (selectedCity) params.set('location', selectedCity);
     if (selectedCompany) params.set('company', selectedCompany);
     if (selectedSource) params.set('source', selectedSource);
-    if (selectedExp?.min !== undefined && selectedExp?.min !== null)
-      params.set('min_exp', selectedExp.min);
-    if (selectedExp?.max !== undefined && selectedExp?.max !== null)
-      params.set('max_exp', selectedExp.max);
+    if (selectedExp?.isCustom && selectedExp?.exact !== undefined) {
+      params.set('exp_years', selectedExp.exact);
+    } else {
+      if (selectedExp?.min !== undefined && selectedExp?.min !== null)
+        params.set('min_exp', selectedExp.min);
+      if (selectedExp?.max !== undefined && selectedExp?.max !== null)
+        params.set('max_exp', selectedExp.max);
+    }
     if (remoteOnly) params.set('remote_only', 'true');
     if (indiaOnly) params.set('india_only', 'true');
     if (!activeOnly) params.set('active_only', 'false');
@@ -126,9 +143,48 @@ export default function App() {
   // -------------------------------------------------------------
   // Data Queries
   // -------------------------------------------------------------
+  // Dedicated stable KPI stats query (180s TTL, keepPreviousData)
+  const { data: statsData, isLoading: isStatsLoading } = useQuery({
+    queryKey: ['stats'],
+    queryFn: fetchStats,
+    staleTime: 180_000,
+    placeholderData: keepPreviousData,
+  });
+
+  const filterParams = useMemo(() => {
+    const p = {};
+    if (debouncedSearch) p.q = debouncedSearch;
+    if (selectedCategory) p.category = selectedCategory;
+    if (selectedCountry) p.country = selectedCountry;
+    if (selectedCity) p.location = selectedCity;
+    if (selectedCompany) p.company = selectedCompany;
+    if (selectedSource) p.source = selectedSource;
+    if (selectedExp?.isCustom && selectedExp?.exact !== undefined) {
+      p.exp_years = selectedExp.exact;
+    }
+    if (remoteOnly) p.remote_only = true;
+    if (indiaOnly) p.india_only = true;
+    if (activeOnly) p.active_only = true;
+    return p;
+  }, [
+    debouncedSearch,
+    selectedCategory,
+    selectedCountry,
+    selectedCity,
+    selectedCompany,
+    selectedSource,
+    selectedExp,
+    remoteOnly,
+    indiaOnly,
+    activeOnly,
+  ]);
+
+  // Universal Cross-Faceted Filters Query
   const { data: filtersData, refetch: refetchFilters } = useQuery({
-    queryKey: ['filters', selectedCountry],
-    queryFn: () => fetchFilters(selectedCountry),
+    queryKey: ['filters', filterParams],
+    queryFn: () => fetchFilters(filterParams),
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const queryParams = useMemo(() => {
@@ -143,8 +199,12 @@ export default function App() {
     if (selectedCity) p.location = selectedCity;
     if (selectedCompany) p.company = selectedCompany;
     if (selectedSource) p.source = selectedSource;
-    if (selectedExp?.min !== undefined && selectedExp?.min !== null) p.min_exp = selectedExp.min;
-    if (selectedExp?.max !== undefined && selectedExp?.max !== null) p.max_exp = selectedExp.max;
+    if (selectedExp?.isCustom && selectedExp?.exact !== undefined) {
+      p.exp_years = selectedExp.exact;
+    } else {
+      if (selectedExp?.min !== undefined && selectedExp?.min !== null) p.min_exp = selectedExp.min;
+      if (selectedExp?.max !== undefined && selectedExp?.max !== null) p.max_exp = selectedExp.max;
+    }
     if (remoteOnly) p.remote_only = true;
     if (indiaOnly) p.india_only = true;
     if (activeOnly) p.active_only = true;
@@ -171,7 +231,44 @@ export default function App() {
   } = useQuery({
     queryKey: ['jobs', queryParams],
     queryFn: () => fetchJobs(queryParams),
+    placeholderData: keepPreviousData,
   });
+
+  // Non-blocking background live search fallback (Option 2B)
+  const shouldLiveSearch = Boolean(
+    !isJobsFetching &&
+    jobsData &&
+    jobsData.total < 15 &&
+    (debouncedSearch?.trim().length >= 2 || selectedCity || (selectedCountry && selectedCountry !== 'Remote / Worldwide'))
+  );
+
+  const liveSearchParams = useMemo(() => {
+    if (!shouldLiveSearch) return null;
+    return {
+      q: debouncedSearch?.trim() || 'Software Engineer',
+      location: selectedCity || '',
+      country: selectedCountry || (indiaOnly ? 'India' : 'India'),
+    };
+  }, [shouldLiveSearch, debouncedSearch, selectedCity, selectedCountry, indiaOnly]);
+
+  const {
+    data: liveSearchData,
+    isFetching: isLiveSearchFetching,
+  } = useQuery({
+    queryKey: ['live_search', liveSearchParams],
+    queryFn: ({ signal }) => fetchLiveSearch(liveSearchParams, { signal }),
+    enabled: Boolean(liveSearchParams),
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Combined jobs list: DB jobs + newly found live jobs that aren't already in DB
+  const displayJobs = useMemo(() => {
+    const base = jobsData?.jobs || [];
+    if (!liveSearchData?.jobs?.length) return base;
+    const existingIds = new Set(base.map((j) => j.id));
+    const newLive = liveSearchData.jobs.filter((lj) => !existingIds.has(lj.id));
+    return [...base, ...newLive];
+  }, [jobsData?.jobs, liveSearchData?.jobs]);
 
   // Query for tracked applications (used by Tracker view and Header badge)
   const { data: trackedJobsData, refetch: refetchTracked } = useQuery({
@@ -207,7 +304,7 @@ export default function App() {
   }, [syncStatus, queryClient]);
 
   // Auto-select first job if none selected
-  const jobs = jobsData?.jobs || [];
+  const jobs = displayJobs;
   const selectedJob = useMemo(() => {
     if (!jobs.length) return null;
     return jobs.find((j) => j.id === selectedJobId) || jobs[0];
@@ -331,10 +428,10 @@ export default function App() {
     (!activeOnly ? 1 : 0) +
     (debouncedSearch ? 1 : 0);
 
-  const trackedCount = (filtersData?.kpis?.saved_jobs || 0) + (filtersData?.kpis?.applied_jobs || 0);
+  const trackedCount = (statsData?.saved_jobs ?? filtersData?.kpis?.saved_jobs ?? 0) + (statsData?.applied_jobs ?? filtersData?.kpis?.applied_jobs ?? 0);
 
   return (
-    <div className="min-h-screen bg-[#F7F7F5] flex flex-col font-sans">
+    <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-[#F7F7F5] flex flex-col font-sans">
       {/* 1. Sticky Header */}
       <Header
         activeTab={activeTab}
@@ -352,8 +449,10 @@ export default function App() {
           setIndiaOnly(nextVal);
           if (nextVal) {
             setSelectedCountry('India');
+            setSelectedCity(null);
           } else if (selectedCountry === 'India') {
             setSelectedCountry(null);
+            setSelectedCity(null);
           }
           setPage(1);
         }}
@@ -361,16 +460,18 @@ export default function App() {
 
       {/* 2. Compact KPI Metric Strip */}
       <StatsStrip
-        kpis={filtersData?.kpis}
-        isLoading={!filtersData}
+        kpis={statsData || filtersData?.kpis}
+        isLoading={isStatsLoading && !statsData}
         indiaOnly={indiaOnly}
         onToggleIndia={() => {
           const nextVal = !indiaOnly;
           setIndiaOnly(nextVal);
           if (nextVal) {
             setSelectedCountry('India');
+            setSelectedCity(null);
           } else if (selectedCountry === 'India') {
             setSelectedCountry(null);
+            setSelectedCity(null);
           }
           setPage(1);
         }}
@@ -378,7 +479,7 @@ export default function App() {
 
       {/* 3. Main Views */}
       {activeTab === 'discover' ? (
-        <div className="flex-1 flex w-full">
+        <div className="flex-1 min-h-0 flex w-full overflow-hidden">
           {/* Left Filter Rail (252px) */}
           <FilterSidebar
             filtersData={filtersData}
@@ -443,9 +544,9 @@ export default function App() {
           />
 
           {/* Middle Feed Column */}
-          <main className="flex-1 min-w-0 border-r border-neutral-200 bg-white">
+          <main className="flex-1 min-w-0 border-r border-neutral-200 bg-white lg:h-full lg:overflow-y-auto flex flex-col">
             {/* Feed Control Bar: Filters Trigger, Sort & Result Count */}
-            <div className="h-11 px-3 sm:px-4 border-b border-neutral-200 flex items-center justify-between text-xs bg-white sticky top-[97px] md:top-[97px] z-10 gap-2">
+            <div className="h-11 px-3 sm:px-4 border-b border-neutral-200 flex items-center justify-between text-xs bg-white sticky top-14 lg:top-0 z-10 gap-2 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 {/* Mobile Filter Trigger Button (< lg) */}
                 <button
@@ -501,8 +602,51 @@ export default function App() {
               </div>
             </div>
 
+            {/* Top thin progress bar during background fetching */}
+            {isJobsFetching && (
+              <div className="h-0.5 w-full bg-orange-100 overflow-hidden shrink-0">
+                <div className="h-full bg-[#F26825] animate-pulse w-full" />
+              </div>
+            )}
+
+            {/* Non-blocking Auto-Live Search Status Banner */}
+            {isLiveSearchFetching && (
+              <div className="mx-3 my-2 px-3 py-2 bg-orange-50/80 border border-orange-200/80 rounded-lg flex items-center justify-between text-xs text-neutral-700 animate-pulse shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#F26825] animate-ping" />
+                  <span className="font-medium text-[#111827]">
+                    Checking live openings across LinkedIn, Naukri &amp; Indeed...
+                  </span>
+                </div>
+                <span className="text-[10px] text-neutral-500 font-mono">Live Search</span>
+              </div>
+            )}
+
             {/* Job Cards Stream */}
-            <div className="divide-y divide-neutral-100">
+            <div
+              className={`divide-y divide-neutral-100 transition-opacity duration-200 ${
+                isJobsFetching ? 'opacity-70' : 'opacity-100'
+              }`}
+            >
+              {/* Cold initial loading skeletons */}
+              {isJobsLoading && !jobsData && (
+                <div className="p-4 space-y-4">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="p-4 bg-white rounded-lg border border-neutral-100 animate-pulse space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="h-4 bg-neutral-200 rounded w-1/3" />
+                        <div className="h-3 bg-neutral-100 rounded w-16" />
+                      </div>
+                      <div className="h-3 bg-neutral-100 rounded w-1/2" />
+                      <div className="flex gap-2">
+                        <div className="h-5 bg-neutral-100 rounded w-14" />
+                        <div className="h-5 bg-neutral-100 rounded w-20" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {jobs.map((job) => (
                 <JobCard
                   key={job.id}
@@ -564,7 +708,7 @@ export default function App() {
           </main>
 
           {/* Desktop Right Sticky Reading Pane (hidden on < lg) */}
-          <div className="w-[440px] shrink-0 hidden lg:block">
+          <div className="w-[440px] shrink-0 hidden lg:block h-full overflow-hidden">
             <JobDetailPane
               job={selectedJob}
               onToggleSave={handleToggleSave}
@@ -679,7 +823,7 @@ export default function App() {
         </div>
       ) : (
         /* My Tracker Kanban Board View */
-        <main className="flex-1">
+        <main className="flex-1 min-h-0 lg:h-full lg:overflow-y-auto">
           <TrackerBoard
             jobs={trackedJobsData?.jobs || []}
             onUpdateTracking={handleUpdateTracking}

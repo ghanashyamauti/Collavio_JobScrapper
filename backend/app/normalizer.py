@@ -1,9 +1,10 @@
 import re
 import html
 import hashlib
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Set
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 from bs4 import BeautifulSoup
+import pycountry
 
 
 TRACKING_PARAMS = {
@@ -28,38 +29,272 @@ COMPANY_SUFFIX_REGEX = re.compile(
     re.IGNORECASE,
 )
 
-CITY_ALIASES = {
-    "bangalore": "Bengaluru",
-    "bengaluru": "Bengaluru",
-    "bombay": "Mumbai",
-    "mumbai": "Mumbai",
-    "gurgaon": "Gurugram",
-    "gurugram": "Gurugram",
-    "new delhi": "Delhi",
-    "delhi": "Delhi",
-    "delhi ncr": "Delhi NCR",
-    "ncr": "Delhi NCR",
-    "hyderabad": "Hyderabad",
-    "pune": "Pune",
-    "chennai": "Chennai",
-    "madras": "Chennai",
-    "kolkata": "Kolkata",
-    "calcutta": "Kolkata",
-    "ahmedabad": "Ahmedabad",
-    "noida": "Noida",
-    "nyc": "New York",
-    "new york": "New York",
-    "new york city": "New York",
-    "sf": "San Francisco",
-    "san francisco": "San Francisco",
-    "london": "London",
-    "berlin": "Berlin",
-    "singapore": "Singapore",
-    "toronto": "Toronto",
-    "remote": "Remote",
+# 1. US State 2-letter codes and names
+US_STATES = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
+    "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia",
+    "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa",
+    "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+    "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri",
+    "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey",
+    "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio",
+    "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+    "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont",
+    "VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming",
+    "DC": "District of Columbia"
+}
+US_STATE_NAMES = {v.lower(): "United States" for v in US_STATES.values()}
+US_STATE_CODES = {k.lower(): "United States" for k in US_STATES.keys()}
+
+# 2. Canada Province codes and names
+CA_PROVINCES = {
+    "ON": "Ontario", "BC": "British Columbia", "QC": "Quebec", "AB": "Alberta",
+    "MB": "Manitoba", "SK": "Saskatchewan", "NS": "Nova Scotia", "NB": "New Brunswick",
+    "NL": "Newfoundland and Labrador", "PE": "Prince Edward Island", "NT": "Northwest Territories",
+    "YT": "Yukon", "NU": "Nunavut"
+}
+CA_PROV_NAMES = {v.lower(): "Canada" for v in CA_PROVINCES.values()}
+CA_PROV_CODES = {k.lower(): "Canada" for k in CA_PROVINCES.keys()}
+
+# 3. Australia State codes and names
+AU_STATES = {
+    "NSW": "New South Wales", "VIC": "Victoria", "QLD": "Queensland", "WA": "Western Australia",
+    "SA": "South Australia", "TAS": "Tasmania", "ACT": "Australian Capital Territory", "NT": "Northern Territory"
+}
+AU_STATE_NAMES = {v.lower(): "Australia" for v in AU_STATES.values()}
+AU_STATE_CODES = {k.lower(): "Australia" for k in AU_STATES.keys()}
+
+# 4. India State names and codes
+IN_STATES = {
+    "karnataka": "India", "maharashtra": "India", "telangana": "India", "tamil nadu": "India",
+    "delhi": "India", "haryana": "India", "uttar pradesh": "India", "gujarat": "India",
+    "west bengal": "India", "kerala": "India", "rajasthan": "India", "madhya pradesh": "India",
+    "punjab": "India", "andhra pradesh": "India", "bihar": "India", "odisha": "India",
+    "assam": "India", "goa": "India", "jharkhand": "India", "uttarakhand": "India",
 }
 
-REMOTE_KEYWORDS = ["remote", "work from home", "wfh", "worldwide", "anywhere", "telecommute"]
+# 5. Global Cities -> (Standard City Name, Standard Country Name)
+GLOBAL_CITIES = {
+    # India
+    "bengaluru": ("Bengaluru", "India"), "bangalore": ("Bengaluru", "India"),
+    "mumbai": ("Mumbai", "India"), "bombay": ("Mumbai", "India"),
+    "pune": ("Pune", "India"), "hyderabad": ("Hyderabad", "India"),
+    "gurgaon": ("Gurugram", "India"), "gurugram": ("Gurugram", "India"),
+    "delhi": ("Delhi", "India"), "new delhi": ("Delhi", "India"),
+    "delhi ncr": ("Delhi NCR", "India"), "noida": ("Noida", "India"),
+    "greater noida": ("Noida", "India"), "chennai": ("Chennai", "India"),
+    "madras": ("Chennai", "India"), "kolkata": ("Kolkata", "India"),
+    "calcutta": ("Kolkata", "India"), "ahmedabad": ("Ahmedabad", "India"),
+    "jaipur": ("Jaipur", "India"), "surat": ("Surat", "India"),
+    "indore": ("Indore", "India"), "nagpur": ("Nagpur", "India"),
+    "chandigarh": ("Chandigarh", "India"), "kochi": ("Kochi", "India"),
+    "cochin": ("Kochi", "India"), "coimbatore": ("Coimbatore", "India"),
+    "bhubaneswar": ("Bhubaneswar", "India"), "thiruvananthapuram": ("Thiruvananthapuram", "India"),
+    "trivandrum": ("Thiruvananthapuram", "India"), "lucknow": ("Lucknow", "India"),
+    "vadodara": ("Vadodara", "India"), "visakhapatnam": ("Visakhapatnam", "India"),
+    "patna": ("Patna", "India"), "bhopal": ("Bhopal", "India"),
+    "mysuru": ("Mysuru", "India"), "mysore": ("Mysuru", "India"),
+    "kanpur": ("Kanpur", "India"), "ludhiana": ("Ludhiana", "India"),
+    "nashik": ("Nashik", "India"), "dehradun": ("Dehradun", "India"),
+    "ranchi": ("Ranchi", "India"), "guwahati": ("Guwahati", "India"),
+
+    # United States
+    "new york": ("New York", "United States"), "nyc": ("New York", "United States"),
+    "new york city": ("New York", "United States"), "san francisco": ("San Francisco", "United States"),
+    "sf": ("San Francisco", "United States"), "seattle": ("Seattle", "United States"),
+    "austin": ("Austin", "United States"), "boston": ("Boston", "United States"),
+    "chicago": ("Chicago", "United States"), "los angeles": ("Los Angeles", "United States"),
+    "la": ("Los Angeles", "United States"), "denver": ("Denver", "United States"),
+    "atlanta": ("Atlanta", "United States"), "san jose": ("San Jose", "United States"),
+    "dallas": ("Dallas", "United States"), "houston": ("Houston", "United States"),
+    "san diego": ("San Diego", "United States"), "miami": ("Miami", "United States"),
+    "portland": ("Portland", "United States"), "phoenix": ("Phoenix", "United States"),
+    "philadelphia": ("Philadelphia", "United States"), "washington": ("Washington", "United States"),
+    "washington dc": ("Washington", "United States"), "pittsburgh": ("Pittsburgh", "United States"),
+    "raleigh": ("Raleigh", "United States"), "salt lake city": ("Salt Lake City", "United States"),
+    "minneapolis": ("Minneapolis", "United States"), "detroit": ("Detroit", "United States"),
+    "charlotte": ("Charlotte", "United States"), "tampa": ("Tampa", "United States"),
+    "nashville": ("Nashville", "United States"), "palo alto": ("Palo Alto", "United States"),
+    "mountain view": ("Mountain View", "United States"), "sunnyvale": ("Sunnyvale", "United States"),
+    "redwood city": ("Redwood City", "United States"), "santa clara": ("Santa Clara", "United States"),
+    "menlo park": ("Menlo Park", "United States"), "cupertino": ("Cupertino", "United States"),
+    "berkeley": ("Berkeley", "United States"), "oakland": ("Oakland", "United States"),
+    "irvine": ("Irvine", "United States"), "bellevue": ("Bellevue", "United States"),
+    "redmond": ("Redmond", "United States"), "arlington": ("Arlington", "United States"),
+    "mclean": ("McLean", "United States"), "cambridge": ("Cambridge", "United States"),
+    "indianapolis": ("Indianapolis", "United States"), "memphis": ("Memphis", "United States"),
+    "plainfield": ("Plainfield", "United States"), "greenfield": ("Greenfield", "United States"),
+
+    # Canada
+    "toronto": ("Toronto", "Canada"), "vancouver": ("Vancouver", "Canada"),
+    "montreal": ("Montreal", "Canada"), "montréal": ("Montreal", "Canada"),
+    "calgary": ("Calgary", "Canada"), "ottawa": ("Ottawa", "Canada"),
+    "edmonton": ("Edmonton", "Canada"), "waterloo": ("Waterloo", "Canada"),
+    "mississauga": ("Mississauga", "Canada"), "quebec": ("Quebec City", "Canada"),
+    "quebec city": ("Quebec City", "Canada"), "victoria": ("Victoria", "Canada"),
+    "halifax": ("Halifax", "Canada"), "winnipeg": ("Winnipeg", "Canada"),
+
+    # United Kingdom
+    "london": ("London", "United Kingdom"), "manchester": ("Manchester", "United Kingdom"),
+    "edinburgh": ("Edinburgh", "United Kingdom"), "birmingham": ("Birmingham", "United Kingdom"),
+    "bristol": ("Bristol", "United Kingdom"), "glasgow": ("Glasgow", "United Kingdom"),
+    "leeds": ("Leeds", "United Kingdom"), "oxford": ("Oxford", "United Kingdom"),
+    "belfast": ("Belfast", "United Kingdom"),
+
+    # Germany
+    "berlin": ("Berlin", "Germany"), "munich": ("Munich", "Germany"), "münchen": ("Munich", "Germany"),
+    "frankfurt": ("Frankfurt", "Germany"), "hamburg": ("Hamburg", "Germany"),
+    "cologne": ("Cologne", "Germany"), "köln": ("Cologne", "Germany"),
+    "stuttgart": ("Stuttgart", "Germany"), "dusseldorf": ("Dusseldorf", "Germany"),
+    "düsseldorf": ("Dusseldorf", "Germany"),
+
+    # France
+    "paris": ("Paris", "France"), "lyon": ("Lyon", "France"),
+    "marseille": ("Marseille", "France"), "toulouse": ("Toulouse", "France"),
+    "nice": ("Nice", "France"), "bordeaux": ("Bordeaux", "France"),
+    "nantes": ("Nantes", "France"),
+
+    # Netherlands
+    "amsterdam": ("Amsterdam", "Netherlands"), "rotterdam": ("Rotterdam", "Netherlands"),
+    "the hague": ("The Hague", "Netherlands"), "den haag": ("The Hague", "Netherlands"),
+    "utrecht": ("Utrecht", "Netherlands"), "eindhoven": ("Eindhoven", "Netherlands"),
+
+    # Ireland
+    "dublin": ("Dublin", "Ireland"), "cork": ("Cork", "Ireland"),
+    "galway": ("Galway", "Ireland"), "limerick": ("Limerick", "Ireland"),
+
+    # Australia
+    "sydney": ("Sydney", "Australia"), "melbourne": ("Melbourne", "Australia"),
+    "brisbane": ("Brisbane", "Australia"), "perth": ("Perth", "Australia"),
+    "adelaide": ("Adelaide", "Australia"), "canberra": ("Canberra", "Australia"),
+
+    # Singapore
+    "singapore": ("Singapore", "Singapore"),
+
+    # UAE
+    "dubai": ("Dubai", "United Arab Emirates"), "abu dhabi": ("Abu Dhabi", "United Arab Emirates"),
+    "sharjah": ("Sharjah", "United Arab Emirates"),
+
+    # Spain
+    "madrid": ("Madrid", "Spain"), "barcelona": ("Barcelona", "Spain"),
+    "valencia": ("Valencia", "Spain"), "seville": ("Seville", "Spain"),
+
+    # Italy
+    "rome": ("Rome", "Italy"), "milan": ("Milan", "Italy"), "milano": ("Milan", "Italy"),
+    "turin": ("Turin", "Italy"), "florence": ("Florence", "Italy"),
+
+    # Japan
+    "tokyo": ("Tokyo", "Japan"), "osaka": ("Osaka", "Japan"), "kyoto": ("Kyoto", "Japan"),
+
+    # Poland
+    "warsaw": ("Warsaw", "Poland"), "krakow": ("Krakow", "Poland"), "kraków": ("Krakow", "Poland"),
+    "wroclaw": ("Wroclaw", "Poland"), "wrocław": ("Wroclaw", "Poland"),
+
+    # Sweden
+    "stockholm": ("Stockholm", "Sweden"), "gothenburg": ("Gothenburg", "Sweden"),
+    "malmo": ("Malmo", "Sweden"), "malmö": ("Malmo", "Sweden"),
+
+    # Switzerland
+    "zurich": ("Zurich", "Switzerland"), "zürich": ("Zurich", "Switzerland"),
+    "geneva": ("Geneva", "Switzerland"), "genève": ("Geneva", "Switzerland"),
+    "basel": ("Basel", "Switzerland"), "bern": ("Bern", "Switzerland"),
+
+    # Brazil
+    "sao paulo": ("Sao Paulo", "Brazil"), "são paulo": ("Sao Paulo", "Brazil"),
+    "rio de janeiro": ("Rio de Janeiro", "Brazil"), "curitiba": ("Curitiba", "Brazil"),
+
+    # Mexico
+    "mexico city": ("Mexico City", "Mexico"), "guadalajara": ("Guadalajara", "Mexico"),
+    "monterrey": ("Monterrey", "Mexico"),
+
+    # Philippines
+    "manila": ("Manila", "Philippines"), "taguig": ("Taguig", "Philippines"),
+    "makati": ("Makati", "Philippines"), "cebu": ("Cebu", "Philippines"),
+
+    # Israel
+    "tel aviv": ("Tel Aviv", "Israel"), "jerusalem": ("Jerusalem", "Israel"),
+    "herzliya": ("Herzliya", "Israel"),
+
+    # New Zealand
+    "auckland": ("Auckland", "New Zealand"), "wellington": ("Wellington", "New Zealand"),
+
+    # Thailand
+    "bangkok": ("Bangkok", "Thailand"),
+
+    # Hong Kong & Taiwan
+    "hong kong": ("Hong Kong", "Hong Kong"), "taipei": ("Taipei", "Taiwan"),
+
+    # South Korea
+    "seoul": ("Seoul", "South Korea"),
+}
+
+CITY_ALIASES = {k: v[0] for k, v in GLOBAL_CITIES.items()}
+CITY_ALIASES["remote"] = "Remote"
+
+# 6. Standard Country Aliases Map
+COUNTRY_ALIASES = {
+    "united states": "United States", "usa": "United States", "u.s.": "United States", "u.s.a.": "United States", "us": "United States",
+    "united kingdom": "United Kingdom", "uk": "United Kingdom", "great britain": "United Kingdom", "england": "United Kingdom", "scotland": "United Kingdom", "wales": "United Kingdom",
+    "india": "India", "in": "India",
+    "canada": "Canada", "ca": "Canada",
+    "germany": "Germany", "deutschland": "Germany", "de": "Germany",
+    "france": "France", "fr": "France",
+    "netherlands": "Netherlands", "holland": "Netherlands", "nl": "Netherlands",
+    "ireland": "Ireland", "ie": "Ireland",
+    "australia": "Australia", "au": "Australia",
+    "singapore": "Singapore", "sg": "Singapore",
+    "united arab emirates": "United Arab Emirates", "uae": "United Arab Emirates", "ae": "United Arab Emirates",
+    "spain": "Spain", "españa": "Spain", "es": "Spain",
+    "italy": "Italy", "italia": "Italy", "it": "Italy",
+    "japan": "Japan", "jp": "Japan",
+    "brazil": "Brazil", "brasil": "Brazil", "br": "Brazil",
+    "poland": "Poland", "polska": "Poland", "pl": "Poland",
+    "sweden": "Sweden", "sverige": "Sweden", "se": "Sweden",
+    "switzerland": "Switzerland", "schweiz": "Switzerland", "suisse": "Switzerland", "ch": "Switzerland",
+    "mexico": "Mexico", "méxico": "Mexico", "mx": "Mexico",
+    "philippines": "Philippines", "ph": "Philippines",
+    "israel": "Israel", "il": "Israel",
+    "new zealand": "New Zealand", "nz": "New Zealand",
+    "thailand": "Thailand", "th": "Thailand",
+    "hong kong": "Hong Kong", "hk": "Hong Kong",
+    "taiwan": "Taiwan", "tw": "Taiwan",
+    "south korea": "South Korea", "korea": "South Korea", "kr": "South Korea",
+    "china": "China", "cn": "China",
+    "portugal": "Portugal", "pt": "Portugal",
+    "austria": "Austria", "österreich": "Austria", "at": "Austria",
+    "belgium": "Belgium", "be": "Belgium",
+    "denmark": "Denmark", "danmark": "Denmark", "dk": "Denmark",
+    "norway": "Norway", "norge": "Norway", "no": "Norway",
+    "finland": "Finland", "suomi": "Finland", "fi": "Finland",
+    "czech republic": "Czech Republic", "czechia": "Czech Republic", "cz": "Czech Republic",
+    "romania": "Romania", "ro": "Romania",
+    "greece": "Greece", "gr": "Greece",
+    "turkey": "Turkey", "türkiye": "Turkey", "tr": "Turkey",
+    "south africa": "South Africa", "za": "South Africa",
+    "argentina": "Argentina", "ar": "Argentina",
+    "colombia": "Colombia", "co": "Colombia",
+    "chile": "Chile", "cl": "Chile",
+    "egypt": "Egypt", "eg": "Egypt",
+    "nigeria": "Nigeria", "ng": "Nigeria",
+    "kenya": "Kenya", "ke": "Kenya",
+    "vietnam": "Vietnam", "vn": "Vietnam",
+    "indonesia": "Indonesia", "id": "Indonesia",
+    "malaysia": "Malaysia", "my": "Malaysia",
+}
+
+# Fill additional countries from pycountry
+for country in pycountry.countries:
+    cname = country.name
+    cname_lower = cname.lower()
+    if cname_lower not in COUNTRY_ALIASES:
+        COUNTRY_ALIASES[cname_lower] = cname
+    if hasattr(country, "common_name") and country.common_name.lower() not in COUNTRY_ALIASES:
+        COUNTRY_ALIASES[country.common_name.lower()] = country.common_name
+
+REMOTE_KEYWORDS = [
+    "remote", "work from home", "wfh", "worldwide", "anywhere",
+    "telecommute", "home based", "home-based"
+]
 
 CATEGORIES = [
     (
@@ -361,62 +596,198 @@ def normalize_location_and_remote(
     combined = f"{loc_str} {title_str}".lower()
 
     # Determine remote status
-    is_remote = any(re.search(rf"\b{kw}\b", combined, re.IGNORECASE) for kw in REMOTE_KEYWORDS)
+    is_remote = any(re.search(rf"\b{re.escape(kw)}\b", combined, re.IGNORECASE) for kw in REMOTE_KEYWORDS)
 
-    # City matching
     matched_city = None
     loc_lower = loc_str.lower()
-    for alias, standard_name in CITY_ALIASES.items():
-        pattern = rf"\b{re.escape(alias)}\b"
-        if re.search(pattern, loc_lower):
-            matched_city = standard_name
+
+    # 1. Clean tokens by splitting on delimiters
+    tokens = [t.strip() for t in re.split(r"[,/|;>•\-]", loc_str) if t.strip()]
+
+    # 2. Check tokens against GLOBAL_CITIES
+    for t in tokens:
+        t_clean = re.sub(r"[^\w\s]", "", t).strip().lower()
+        if t_clean in GLOBAL_CITIES:
+            matched_city = GLOBAL_CITIES[t_clean][0]
             break
+
+    # 3. Fast n-gram check in CITY_ALIASES if still not matched
+    if not matched_city:
+        words = re.findall(r"\b[a-z]{2,}\b", loc_lower)
+        for w in words:
+            if w in CITY_ALIASES:
+                matched_city = CITY_ALIASES[w]
+                break
+        if not matched_city:
+            for i in range(len(words) - 1):
+                phrase = f"{words[i]} {words[i+1]}"
+                if phrase in CITY_ALIASES:
+                    matched_city = CITY_ALIASES[phrase]
+                    break
+        if not matched_city:
+            for i in range(len(words) - 2):
+                phrase = f"{words[i]} {words[i+1]} {words[i+2]}"
+                if phrase in CITY_ALIASES:
+                    matched_city = CITY_ALIASES[phrase]
+                    break
 
     if not matched_city and is_remote:
         matched_city = "Remote"
+    elif not matched_city and tokens and len(tokens[0]) <= 30 and not re.search(r"\d", tokens[0]):
+        first_token = tokens[0].strip()
+        f_lower = first_token.lower()
+        non_cities = {
+            "hybrid", "unspecified", "multiple", "various", "onsite", "on-site", "flexible",
+            "remote", "worldwide", "global", "india", "in", "us", "usa", "uk", "united states",
+            "united kingdom", "germany", "canada", "australia", "france"
+        }
+        if f_lower not in non_cities and f_lower not in COUNTRY_ALIASES:
+            matched_city = first_token.title()
 
     if not loc_str and is_remote:
         loc_str = "Remote"
 
-    return loc_str or "Remote" if is_remote else (loc_str or "Unspecified"), matched_city, is_remote
-
-
-INDIA_CITIES = {
-    "bengaluru", "bangalore", "mumbai", "delhi", "hyderabad", "pune", "chennai"
-}
+    return loc_str or ("Remote" if is_remote else "Unspecified"), matched_city, is_remote
 
 
 def detect_country(location: Optional[str], city: Optional[str] = None, is_remote: bool = False) -> str:
-    """Classifies job location into standardized country: India, United States, United Kingdom, Germany, Remote, or Global."""
-    loc = (location or "").lower()
-    c = (city or "").lower()
+    """
+    Classifies job location into a standardized worldwide country name.
+    Utilizes pycountry, state/province mappings, global city mappings, and hierarchical token matching.
+    Reserves 'Remote / Worldwide' only for location-agnostic remote roles.
+    """
+    loc_str = (location or "").strip()
+    c_str = (city or "").strip().lower()
+    combined = f"{loc_str} {c_str}".lower()
 
+    # 1. Explicit check for India: mentions 'india' as a whole word, or Indian city/state
     if (
-        "india" in loc
-        or loc.endswith(" in")
-        or loc.endswith(", in")
-        or ", in," in loc
-        or c in INDIA_CITIES
-        or any(ic in loc for ic in INDIA_CITIES)
+        bool(re.search(r"\bindia\b", combined))
+        or (c_str in GLOBAL_CITIES and GLOBAL_CITIES[c_str][1] == "India")
+        or any(re.search(rf"\b{re.escape(k)}\b", combined) for k in IN_STATES)
     ):
         return "India"
 
-    if any(us in loc for us in [
-        "united states", "usa", "u.s.", "u.s.a", "california", "new york", "texas",
-        "washington", "san francisco", "seattle", "austin", "boston", "chicago"
-    ]) or c in ["new york", "san francisco", "seattle", "chicago"]:
-        return "United States"
+    # 2. Check City if provided and in GLOBAL_CITIES
+    if c_str and c_str in GLOBAL_CITIES:
+        return GLOBAL_CITIES[c_str][1]
 
-    if any(uk in loc for uk in ["united kingdom", "london", "england", "scotland", "uk"]) or c == "london":
-        return "United Kingdom"
+    # 3. Check for US/Canada/Australia State abbreviation e.g. ", CA", ", IN", ", TX", or State Name
+    m_us_state = re.search(r",\s*([A-Z]{2})\b", loc_str)
+    if m_us_state:
+        st = m_us_state.group(1).lower()
+        if st in US_STATE_CODES:
+            return "United States"
+        if st in CA_PROV_CODES:
+            return "Canada"
+        if st in AU_STATE_CODES:
+            return "Australia"
 
-    if any(de in loc for de in ["germany", "berlin", "munich", "frankfurt", "deutschland"]) or c == "berlin":
-        return "Germany"
+    tokens = [t.strip() for t in re.split(r"[,/|;>•\-]", loc_str) if t.strip()]
+    for t in tokens:
+        t_lower = t.lower()
+        if t_lower in US_STATE_CODES or t_lower in US_STATE_NAMES:
+            return "United States"
+        if t_lower in CA_PROV_CODES or t_lower in CA_PROV_NAMES:
+            return "Canada"
+        if t_lower in AU_STATE_CODES or t_lower in AU_STATE_NAMES:
+            return "Australia"
+        if t_lower in IN_STATES:
+            return "India"
 
-    if is_remote or "remote" in loc or c == "remote" or "worldwide" in loc or "anywhere" in loc:
+    # 4. Clean tokens right-to-left for Country Name / Alias
+    for t in reversed(tokens):
+        t_clean = re.sub(r"[^\w\s]", "", t).strip().lower()
+        if t_clean in COUNTRY_ALIASES:
+            return COUNTRY_ALIASES[t_clean]
+        # Check pycountry alpha_2/alpha_3 exact token match
+        if len(t) in (2, 3) and t.isupper():
+            try:
+                c_obj = pycountry.countries.get(alpha_2=t) or pycountry.countries.get(alpha_3=t)
+                if c_obj:
+                    return c_obj.name
+            except Exception:
+                pass
+
+    # 5. Fast word & phrase lookup in GLOBAL_CITIES and COUNTRY_ALIASES
+    loc_lower = loc_str.lower()
+    words = re.findall(r"\b[a-z]{2,}\b", loc_lower)
+    for w in words:
+        if w in GLOBAL_CITIES:
+            return GLOBAL_CITIES[w][1]
+        if w in COUNTRY_ALIASES and len(w) >= 3:
+            return COUNTRY_ALIASES[w]
+
+    for i in range(len(words) - 1):
+        phrase = f"{words[i]} {words[i+1]}"
+        if phrase in GLOBAL_CITIES:
+            return GLOBAL_CITIES[phrase][1]
+        if phrase in COUNTRY_ALIASES:
+            return COUNTRY_ALIASES[phrase]
+
+    for i in range(len(words) - 2):
+        phrase = f"{words[i]} {words[i+1]} {words[i+2]}"
+        if phrase in GLOBAL_CITIES:
+            return GLOBAL_CITIES[phrase][1]
+        if phrase in COUNTRY_ALIASES:
+            return COUNTRY_ALIASES[phrase]
+
+    # 7. Check Remote status
+    if is_remote or any(re.search(rf"\b{re.escape(kw)}\b", loc_lower) for kw in REMOTE_KEYWORDS):
         return "Remote / Worldwide"
 
     return "Global"
+
+
+def detect_platform_source(source_name: Optional[str], apply_url: Optional[str] = None) -> str:
+    """Resolves true platform source name from raw source or apply URL domain."""
+    url = (apply_url or "").lower()
+    src = (source_name or "").lower().strip()
+
+    valid_platforms = {
+        "greenhouse", "lever", "ashby", "smartrecruiters", "workable", "workday",
+        "arbeitnow", "himalayas", "jobicy", "remotive", "remoteok", "weworkremotely",
+        "themuse", "linkedin", "naukri", "indeed", "glassdoor"
+    }
+    if src in valid_platforms:
+        return src
+
+    if "greenhouse.io" in url:
+        return "greenhouse"
+    if "lever.co" in url:
+        return "lever"
+    if "ashbyhq.com" in url:
+        return "ashby"
+    if "smartrecruiters.com" in url:
+        return "smartrecruiters"
+    if "workable.com" in url:
+        return "workable"
+    if "myworkdayjobs.com" in url:
+        return "workday"
+    if "arbeitnow.com" in url:
+        return "arbeitnow"
+    if "himalayas.app" in url:
+        return "himalayas"
+    if "jobicy.com" in url:
+        return "jobicy"
+    if "remotive.com" in url:
+        return "remotive"
+    if "remoteok.com" in url:
+        return "remoteok"
+    if "weworkremotely.com" in url:
+        return "weworkremotely"
+    if "themuse.com" in url:
+        return "themuse"
+    if "linkedin.com" in url:
+        return "linkedin"
+    if "naukri.com" in url:
+        return "naukri"
+    if "indeed.com" in url:
+        return "indeed"
+    if "glassdoor.com" in url:
+        return "glassdoor"
+
+    return src if src and src not in ("ats_direct", "public_feeds") else "other"
 
 
 def classify_category(title: Optional[str], description: Optional[str] = None) -> str:

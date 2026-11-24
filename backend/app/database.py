@@ -68,6 +68,7 @@ else:
         pool_recycle=300,
         pool_size=5,
         max_overflow=10,
+        connect_args={"connect_timeout": 15},
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)

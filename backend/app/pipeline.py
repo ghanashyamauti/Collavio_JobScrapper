@@ -1,12 +1,12 @@
 import logging
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Tuple, Dict, Any
-from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import select, and_, or_
+from typing import List, Optional, Tuple, Dict, Any, Set
+from sqlalchemy.orm import Session
+from sqlalchemy import select, and_, or_, update, func
 from rapidfuzz import fuzz
 
-from app.database import SessionLocal, init_db
+from app.database import SessionLocal, init_db, engine
 from app.models import Job, JobSource, ScrapeRun
 from app.collectors.base import RawJob, BaseCollector
 from app.collectors.jobspy_collector import JobSpyCollector
@@ -24,6 +24,7 @@ from app.normalizer import (
     parse_experience,
     clean_html_description,
     generate_fingerprint,
+    detect_platform_source,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,42 +43,174 @@ def get_sync_telemetry() -> Dict[str, Any]:
     return dict(_current_sync_status)
 
 
-def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -> Tuple[int, int, int]:
+def _bulk_upsert_chunk(
+    db: Session,
+    jobs_chunk: List[Dict[str, Any]],
+    sources_chunk: List[Dict[str, Any]],
+) -> Tuple[int, int]:
     """
-    Normalizes and ingests raw jobs using 3-tier deduplication and multi-source merging.
-    Optimized with in-memory caching to eliminate per-job network latency on remote PostgreSQL.
+    Executes a high-speed bulk upsert into jobs and job_sources using native
+    PostgreSQL ON CONFLICT DO UPDATE (or SQLite fallback for test suites).
+    Returns (new_inserted, duplicates_updated).
+    """
+    if not jobs_chunk:
+        return 0, 0
+
+    dialect_name = db.bind.dialect.name if db.bind else "postgresql"
+    new_count = 0
+    merged_count = 0
+
+    if dialect_name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        # 1. Bulk Upsert into jobs table
+        stmt = pg_insert(Job).values(jobs_chunk)
+        upsert_stmt = stmt.on_conflict_do_update(
+            index_elements=[Job.fingerprint_hash],
+            set_={
+                "is_active": True,
+                "updated_at": func.now(),
+                "country": func.coalesce(Job.country, stmt.excluded.country),
+                "salary_min": func.coalesce(stmt.excluded.salary_min, Job.salary_min),
+                "salary_max": func.coalesce(stmt.excluded.salary_max, Job.salary_max),
+                "currency": func.coalesce(stmt.excluded.currency, Job.currency),
+                "min_exp": func.coalesce(stmt.excluded.min_exp, Job.min_exp),
+                "max_exp": func.coalesce(stmt.excluded.max_exp, Job.max_exp),
+                "description": func.coalesce(Job.description, stmt.excluded.description),
+            },
+        ).returning(
+            Job.id,
+            Job.fingerprint_hash,
+            (Job.created_at == Job.updated_at).label("is_new"),
+        )
+
+        res = db.execute(upsert_stmt).all()
+        fp_to_id = {}
+        for row in res:
+            job_id, fp, is_new = row[0], row[1], row[2]
+            fp_to_id[fp] = job_id
+            if is_new:
+                new_count += 1
+            else:
+                merged_count += 1
+
+        # 2. Bulk Upsert into job_sources table
+        valid_sources = []
+        seen_keys: Set[Tuple[int, str]] = set()
+        for src in sources_chunk:
+            fp = src.get("fingerprint_hash")
+            job_id = fp_to_id.get(fp)
+            if not job_id:
+                continue
+            key = (job_id, src["source_name"])
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            valid_sources.append({
+                "job_id": job_id,
+                "source_name": src["source_name"],
+                "external_id": src.get("external_id"),
+                "apply_url": src["apply_url"],
+                "scraped_at": func.now(),
+            })
+
+        if valid_sources:
+            src_stmt = pg_insert(JobSource).values(valid_sources)
+            upsert_src = src_stmt.on_conflict_do_update(
+                constraint="uq_job_source",
+                set_={
+                    "apply_url": src_stmt.excluded.apply_url,
+                    "scraped_at": func.now(),
+                },
+            )
+            db.execute(upsert_src)
+
+    else:
+        # SQLite dialect (in-memory test harness)
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+        stmt = sqlite_insert(Job).values(jobs_chunk)
+        upsert_stmt = stmt.on_conflict_do_update(
+            index_elements=[Job.fingerprint_hash],
+            set_={
+                "is_active": True,
+                "updated_at": func.now(),
+                "country": func.coalesce(Job.country, stmt.excluded.country),
+                "salary_min": func.coalesce(stmt.excluded.salary_min, Job.salary_min),
+                "salary_max": func.coalesce(stmt.excluded.salary_max, Job.salary_max),
+                "currency": func.coalesce(stmt.excluded.currency, Job.currency),
+                "min_exp": func.coalesce(stmt.excluded.min_exp, Job.min_exp),
+                "max_exp": func.coalesce(stmt.excluded.max_exp, Job.max_exp),
+                "description": func.coalesce(Job.description, stmt.excluded.description),
+            },
+        ).returning(Job.id, Job.fingerprint_hash)
+
+        res = db.execute(upsert_stmt).all()
+        fp_to_id = {row[1]: row[0] for row in res}
+        new_count = len(res)
+
+        valid_sources = []
+        seen_keys = set()
+        for src in sources_chunk:
+            fp = src.get("fingerprint_hash")
+            job_id = fp_to_id.get(fp)
+            if not job_id:
+                continue
+            key = (job_id, src["source_name"])
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            valid_sources.append({
+                "job_id": job_id,
+                "source_name": src["source_name"],
+                "external_id": src.get("external_id"),
+                "apply_url": src["apply_url"],
+                "scraped_at": func.now(),
+            })
+
+        if valid_sources:
+            src_stmt = sqlite_insert(JobSource).values(valid_sources)
+            upsert_src = src_stmt.on_conflict_do_update(
+                index_elements=[JobSource.job_id, JobSource.source_name],
+                set_={
+                    "apply_url": src_stmt.excluded.apply_url,
+                    "scraped_at": func.now(),
+                },
+            )
+            db.execute(upsert_src)
+
+    db.commit()
+    return new_count, merged_count
+
+
+def process_raw_jobs(
+    db: Optional[Session],
+    raw_jobs: List[RawJob],
+    collector_name: str,
+    chunk_size: int = 1000,
+) -> Tuple[int, int, int]:
+    """
+    Normalizes, deduplicates in-memory, and writes jobs in resilient 1,000-row chunks
+    using native PostgreSQL bulk upserts with zero per-row roundtrips.
     Returns (jobs_found, new_jobs, duplicates_merged).
     """
     jobs_found = len(raw_jobs)
-    new_jobs = 0
-    duplicates_merged = 0
+    if jobs_found == 0:
+        return 0, 0, 0
 
-    fourteen_days_ago = datetime.now(timezone.utc) - timedelta(days=14)
+    logger.info(f"[Pipeline] [{collector_name}] Normalizing & deduplicating {jobs_found} raw postings in memory...")
 
-    # Pre-load existing records in memory to eliminate remote roundtrips
-    existing_jobs_by_fp: Dict[str, Job] = {}
-    existing_jobs_by_source_url: Dict[Tuple[str, str], Job] = {}
-    existing_jobs_by_source_extid: Dict[Tuple[str, str], Job] = {}
-    jobs_by_company_city: Dict[Tuple[str, str], List[Job]] = {}
-    seen_job_ids: Set[int] = set()
+    # Step 1: In-memory normalization and deduplication by fingerprint_hash
+    unique_jobs: Dict[str, Dict[str, Any]] = {}
+    unique_sources: List[Dict[str, Any]] = []
+    seen_source_urls: Dict[Tuple[str, str], str] = {}
     scraped_companies: Set[str] = set()
+    seen_fingerprints: Set[str] = set()
 
-    all_existing_jobs = db.execute(select(Job)).scalars().all()
-    job_by_id = {job.id: job for job in all_existing_jobs}
-    for job in all_existing_jobs:
-        existing_jobs_by_fp[job.fingerprint_hash] = job
-        comp_key = (job.normalized_company, (job.city or "").lower())
-        jobs_by_company_city.setdefault(comp_key, []).append(job)
+    # Pre-index fuzzy clusters within this batch by (norm_company, city)
+    clusters: Dict[Tuple[str, str], List[str]] = {}
 
-    all_existing_sources = db.execute(select(JobSource)).scalars().all()
-    for src in all_existing_sources:
-        job = job_by_id.get(src.job_id)
-        if job:
-            existing_jobs_by_source_url[(src.source_name, src.apply_url)] = job
-            if src.external_id:
-                existing_jobs_by_source_extid[(src.source_name, src.external_id)] = job
-
-    for idx, raw in enumerate(raw_jobs):
+    for raw in raw_jobs:
         if not raw.title or not raw.company or not raw.apply_url:
             continue
 
@@ -89,293 +222,176 @@ def process_raw_jobs(db: Session, raw_jobs: List[RawJob], collector_name: str) -
             is_remote = True
         country = detect_country(clean_loc, standard_city, is_remote)
 
-        clean_desc = clean_html_description(raw.description)
-        category = classify_category(raw.title, clean_desc)
-        min_exp, max_exp = parse_experience(raw.title, clean_desc, raw.min_exp, raw.max_exp)
-        is_explicit_exp = (raw.min_exp is not None or raw.max_exp is not None)
+        # Lightweight description: clean only if short/provided, else None for on-demand fetch
+        clean_desc = None
+        if raw.description:
+            clean_desc = clean_html_description(raw.description)
+
+        category = classify_category(raw.title, clean_desc or "")
+        min_exp, max_exp = parse_experience(raw.title, clean_desc or "", raw.min_exp, raw.max_exp)
         fingerprint = generate_fingerprint(norm_comp, norm_title, standard_city)
         comp_city_key = (norm_comp, (standard_city or "").lower())
 
-        # -------------------------------------------------------------
-        # Tier 1: Exact Source Match (same source & apply_url/external_id)
-        # -------------------------------------------------------------
-        existing_job = existing_jobs_by_source_url.get((raw.source_name, canonical_url))
-        if not existing_job and raw.external_id:
-            existing_job = existing_jobs_by_source_extid.get((raw.source_name, raw.external_id))
-
-        if existing_job:
-            duplicates_merged += 1
-            existing_job.is_active = True
-            existing_job.updated_at = datetime.now(timezone.utc)
-            if existing_job.id:
-                seen_job_ids.add(existing_job.id)
-            scraped_companies.add(norm_comp)
-            if not existing_job.country or existing_job.country == "Global":
-                existing_job.country = country
-            _backfill_job_metadata(
-                existing_job, clean_desc, raw.salary_min, raw.salary_max, raw.currency,
-                min_exp, max_exp, is_explicit_exp
-            )
-            continue
-
-        # -------------------------------------------------------------
-        # Tier 2: Canonical Fingerprint Match
-        # -------------------------------------------------------------
-        existing_job = existing_jobs_by_fp.get(fingerprint)
-        if existing_job:
-            duplicates_merged += 1
-            existing_job.is_active = True
-            existing_job.updated_at = datetime.now(timezone.utc)
-            if existing_job.id:
-                seen_job_ids.add(existing_job.id)
-            scraped_companies.add(norm_comp)
-            if not existing_job.country or existing_job.country == "Global":
-                existing_job.country = country
-            _attach_source_and_backfill(
-                db, existing_job, raw.source_name, raw.external_id, canonical_url,
-                clean_desc, raw.salary_min, raw.salary_max, raw.currency, min_exp, max_exp,
-                is_explicit_exp
-            )
-            existing_jobs_by_source_url[(raw.source_name, canonical_url)] = existing_job
-            if raw.external_id:
-                existing_jobs_by_source_extid[(raw.source_name, raw.external_id)] = existing_job
-            continue
-
-        # -------------------------------------------------------------
-        # Tier 3: Fuzzy Cross-Board Match (rapidfuzz token_sort_ratio >= 86)
-        # -------------------------------------------------------------
-        recent_candidates = jobs_by_company_city.get(comp_city_key, [])
-        fuzzy_matched_job = None
-        for candidate in recent_candidates:
-            # Quick length heuristic: if length difference is too high, token_sort_ratio cannot meet threshold
-            if abs(len(norm_title) - len(candidate.normalized_title)) > 15:
-                continue
-
-            if candidate.created_at:
-                c_created = candidate.created_at
-                if c_created.tzinfo is None:
-                    c_created = c_created.replace(tzinfo=timezone.utc)
-                if c_created < fourteen_days_ago:
-                    continue
-
-            ratio = fuzz.token_sort_ratio(norm_title, candidate.normalized_title, score_cutoff=86)
-            if ratio >= 86:
-                fuzzy_matched_job = candidate
-                break
-
-        if fuzzy_matched_job:
-            duplicates_merged += 1
-            fuzzy_matched_job.is_active = True
-            fuzzy_matched_job.updated_at = datetime.now(timezone.utc)
-            if fuzzy_matched_job.id:
-                seen_job_ids.add(fuzzy_matched_job.id)
-            scraped_companies.add(norm_comp)
-            if not fuzzy_matched_job.country or fuzzy_matched_job.country == "Global":
-                fuzzy_matched_job.country = country
-            _attach_source_and_backfill(
-                db, fuzzy_matched_job, raw.source_name, raw.external_id, canonical_url,
-                clean_desc, raw.salary_min, raw.salary_max, raw.currency, min_exp, max_exp,
-                is_explicit_exp
-            )
-            existing_jobs_by_source_url[(raw.source_name, canonical_url)] = fuzzy_matched_job
-            if raw.external_id:
-                existing_jobs_by_source_extid[(raw.source_name, raw.external_id)] = fuzzy_matched_job
-            continue
-
-        # Clean job_type
         clean_job_type = raw.job_type
         if isinstance(clean_job_type, list):
             clean_job_type = ", ".join(str(x) for x in clean_job_type if x)
         elif clean_job_type:
             clean_job_type = str(clean_job_type)
-        else:
-            clean_job_type = None
 
-        # -------------------------------------------------------------
-        # Insert New Job Record
-        # -------------------------------------------------------------
-        new_job = Job(
-            fingerprint_hash=fingerprint,
-            title=raw.title.strip(),
-            normalized_title=norm_title,
-            company=raw.company.strip(),
-            normalized_company=norm_comp,
-            category=category,
-            location=clean_loc,
-            city=standard_city,
-            country=country,
-            is_remote=is_remote,
-            is_active=True,
-            min_exp=min_exp,
-            max_exp=max_exp,
-            job_type=clean_job_type,
-            salary_min=raw.salary_min,
-            salary_max=raw.salary_max,
-            currency=raw.currency,
-            description=clean_desc,
-            posted_at=raw.posted_at or datetime.now(timezone.utc),
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-        )
-        new_source = JobSource(
-            job=new_job,
-            source_name=raw.source_name,
-            external_id=raw.external_id,
-            apply_url=canonical_url,
-        )
-        new_job.sources.append(new_source)
-        db.add(new_job)
-
-        # Use database SAVEPOINT to isolate any individual constraint conflict
-        try:
-            with db.begin_nested():
-                db.flush([new_job, new_source])
-        except Exception:
-            existing_jobs_by_fp[fingerprint] = True
-            continue
-
-        # Register in in-memory lookups
-        existing_jobs_by_fp[fingerprint] = new_job
-        existing_jobs_by_source_url[(raw.source_name, canonical_url)] = new_job
-        if raw.external_id:
-            existing_jobs_by_source_extid[(raw.source_name, raw.external_id)] = new_job
-        jobs_by_company_city.setdefault(comp_city_key, []).append(new_job)
-
-        new_jobs += 1
         scraped_companies.add(norm_comp)
+        seen_fingerprints.add(fingerprint)
 
-        if new_jobs % 250 == 0:
-            try:
-                db.commit()
-            except Exception as commit_err:
-                db.rollback()
-                logger.warning(f"[Pipeline] Batch commit error: {commit_err}")
+        # Check URL match or existing fingerprint in current batch
+        target_fp = fingerprint
+        if (raw.source_name, canonical_url) in seen_source_urls:
+            target_fp = seen_source_urls[(raw.source_name, canonical_url)]
+        elif fingerprint not in unique_jobs and comp_city_key in clusters:
+            # Check fuzzy match against cluster candidates
+            for candidate_fp in clusters[comp_city_key]:
+                cand = unique_jobs.get(candidate_fp)
+                if cand and abs(len(norm_title) - len(cand["normalized_title"])) <= 12:
+                    if fuzz.token_sort_ratio(norm_title, cand["normalized_title"]) >= 88:
+                        target_fp = candidate_fp
+                        break
 
-        if (idx + 1) % 500 == 0 or (idx + 1) == jobs_found:
-            logger.info(f"[Pipeline] [{collector_name}] Processed {idx + 1}/{jobs_found} jobs ({new_jobs} new, {duplicates_merged} merged)...")
+        seen_source_urls[(raw.source_name, canonical_url)] = target_fp
 
-    # -------------------------------------------------------------
-    # Automatic Job Deactivation for Direct Company/ATS Scraping
-    # If a company board was scraped, any job in DB for that company not present in raw_jobs is expired/closed.
-    # -------------------------------------------------------------
-    deactivated_count = 0
-    if collector_name in ("ats_direct", "dynamic_company") and scraped_companies:
-        for job in all_existing_jobs:
-            if (
-                job.id
-                and job.is_active
-                and job.id not in seen_job_ids
-                and job.normalized_company in scraped_companies
-            ):
-                # Verify that this job was sourced from this ATS scraper
-                has_ats_source = any(
-                    s.source_name in ("ats_direct", "dynamic_company", collector_name)
-                    for s in getattr(job, "sources", [])
-                )
-                if has_ats_source:
-                    job.is_active = False
-                    job.updated_at = datetime.now(timezone.utc)
-                    deactivated_count += 1
-        if deactivated_count > 0:
-            logger.info(
-                f"[Pipeline] [{collector_name}] Deactivated {deactivated_count} closed/removed postings "
-                f"across {len(scraped_companies)} companies."
-            )
+        if target_fp not in unique_jobs:
+            unique_jobs[target_fp] = {
+                "fingerprint_hash": target_fp,
+                "title": raw.title.strip()[:250],
+                "normalized_title": norm_title[:250],
+                "company": raw.company.strip()[:250],
+                "normalized_company": norm_comp[:250],
+                "category": category[:100],
+                "location": clean_loc[:250] if clean_loc else None,
+                "city": standard_city[:100] if standard_city else None,
+                "country": country[:100] if country else None,
+                "is_remote": is_remote,
+                "is_active": True,
+                "min_exp": min_exp,
+                "max_exp": max_exp,
+                "job_type": clean_job_type[:50] if clean_job_type else None,
+                "salary_min": raw.salary_min,
+                "salary_max": raw.salary_max,
+                "currency": raw.currency[:10] if raw.currency else None,
+                "description": clean_desc,
+                "posted_at": raw.posted_at or datetime.now(timezone.utc),
+            }
+            clusters.setdefault(comp_city_key, []).append(target_fp)
+        else:
+            # Merge richer attributes into in-memory job
+            existing = unique_jobs[target_fp]
+            if raw.salary_min and (not existing["salary_min"] or raw.salary_min < existing["salary_min"]):
+                existing["salary_min"] = raw.salary_min
+            if raw.salary_max and (not existing["salary_max"] or raw.salary_max > existing["salary_max"]):
+                existing["salary_max"] = raw.salary_max
+            if not existing["currency"] and raw.currency:
+                existing["currency"] = raw.currency[:10]
+            if clean_desc and not existing["description"]:
+                existing["description"] = clean_desc
 
-    try:
-        db.commit()
-    except Exception as commit_err:
-        db.rollback()
-        logger.warning(f"[Pipeline] Final commit handled conflict: {commit_err}")
+        platform = detect_platform_source(raw.source_name, canonical_url)
+        unique_sources.append({
+            "fingerprint_hash": target_fp,
+            "source_name": platform[:100],
+            "external_id": (raw.external_id or "")[:250] if raw.external_id else None,
+            "apply_url": canonical_url,
+        })
 
-    return jobs_found, new_jobs, duplicates_merged
+    logger.info(
+        f"[Pipeline] [{collector_name}] In-memory preparation complete: "
+        f"{len(unique_jobs)} unique jobs, {len(unique_sources)} sources."
+    )
 
+    # Step 2: Ingest in chunks of 1,000 items with fresh sessions
+    all_job_items = list(unique_jobs.values())
+    sources_by_fp: Dict[str, List[Dict[str, Any]]] = {}
+    for s in unique_sources:
+        sources_by_fp.setdefault(s["fingerprint_hash"], []).append(s)
 
-def _backfill_job_metadata(
-    job: Job,
-    description: Optional[str],
-    salary_min: Optional[float],
-    salary_max: Optional[float],
-    currency: Optional[str],
-    min_exp: Optional[float],
-    max_exp: Optional[float],
-    is_explicit_exp: bool = False,
-) -> None:
-    """Enriches existing job if new source has richer data."""
-    if description and (not job.description or len(description) > len(job.description)):
-        job.description = description
-    if salary_min is not None and (job.salary_min is None or salary_min < job.salary_min):
-        job.salary_min = salary_min
-    if salary_max is not None and (job.salary_max is None or salary_max > job.salary_max):
-        job.salary_max = salary_max
-    if currency and not job.currency:
-        job.currency = currency
-    if min_exp is not None:
-        if job.min_exp is None or is_explicit_exp:
-            job.min_exp = min_exp
-    if max_exp is not None:
-        if job.max_exp is None or is_explicit_exp:
-            job.max_exp = max_exp
+    total_new = 0
+    total_merged = 0
 
+    use_external_session = db is not None
+    chunks = [all_job_items[i : i + chunk_size] for i in range(0, len(all_job_items), chunk_size)]
 
-def _attach_source_and_backfill(
-    db: Session,
-    job: Job,
-    source_name: str,
-    external_id: Optional[str],
-    apply_url: str,
-    description: Optional[str],
-    salary_min: Optional[float],
-    salary_max: Optional[float],
-    currency: Optional[str],
-    min_exp: Optional[float],
-    max_exp: Optional[float],
-    is_explicit_exp: bool = False,
-) -> None:
-    """Attaches a new JobSource record to an existing job if not already present, and enriches metadata."""
-    existing_src = next((s for s in job.sources if s.source_name == source_name), None)
+    for chunk_idx, job_chunk in enumerate(chunks, 1):
+        chunk_sources = []
+        for j in job_chunk:
+            chunk_sources.extend(sources_by_fp.get(j["fingerprint_hash"], []))
 
-    if not existing_src:
-        new_src = JobSource(
-            job=job,
-            source_name=source_name,
-            external_id=external_id,
-            apply_url=apply_url,
+        if use_external_session:
+            n, m = _bulk_upsert_chunk(db, job_chunk, chunk_sources)
+            total_new += n
+            total_merged += m
+        else:
+            with SessionLocal() as session:
+                n, m = _bulk_upsert_chunk(session, job_chunk, chunk_sources)
+                total_new += n
+                total_merged += m
+
+        logger.info(
+            f"[Pipeline] [{collector_name}] Upserted chunk {chunk_idx}/{len(chunks)} "
+            f"({len(job_chunk)} jobs) -> total new: {total_new}, merged: {total_merged}"
         )
-        job.sources.append(new_src)
-        db.add(new_src)
 
-    _backfill_job_metadata(job, description, salary_min, salary_max, currency, min_exp, max_exp, is_explicit_exp)
+    # Step 3: Bulk reconciliation for live job removal
+    # If this was a direct employer board scrape with successful response, mark missing roles inactive
+    if collector_name in ("ats_direct", "dynamic_company", "workday") and scraped_companies and seen_fingerprints:
+        try:
+            recon_session = db if use_external_session else SessionLocal()
+            stmt = (
+                update(Job)
+                .where(
+                    Job.normalized_company.in_(list(scraped_companies)),
+                    Job.fingerprint_hash.not_in(list(seen_fingerprints)),
+                    Job.is_active == True,
+                )
+                .values(is_active=False, updated_at=func.now())
+            )
+            recon_session.execute(stmt)
+            recon_session.commit()
+            if not use_external_session:
+                recon_session.close()
+            logger.info(f"[Pipeline] [{collector_name}] Bulk reconciliation deactivated closed roles.")
+        except Exception as recon_err:
+            logger.warning(f"[Pipeline] Bulk reconciliation skipped or failed: {recon_err}")
+
+    return jobs_found, total_new, total_merged
 
 
-def deactivate_expired_jobs(db: Session, max_age_days: int = 30) -> int:
-    """Marks jobs older than max_age_days without fresh sightings as inactive."""
+def deactivate_expired_jobs(db: Session, max_age_days: int = 14) -> int:
+    """Marks untracked postings older than max_age_days without fresh updates as inactive."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
-    expired_jobs = db.execute(
-        select(Job).where(Job.is_active == True, Job.posted_at != None, Job.posted_at < cutoff)
-    ).scalars().all()
-    count = 0
-    for j in expired_jobs:
-        j.is_active = False
-        j.updated_at = datetime.now(timezone.utc)
-        count += 1
-    if count:
-        db.commit()
-        logger.info(f"[Pipeline] Marked {count} jobs older than {max_age_days} days as inactive/expired.")
+    stmt = (
+        update(Job)
+        .where(
+            Job.is_active == True,
+            Job.updated_at < cutoff,
+            Job.is_saved == False,
+            or_(Job.application_status == None, Job.application_status == "none"),
+        )
+        .values(is_active=False, updated_at=func.now())
+    )
+    result = db.execute(stmt)
+    db.commit()
+    count = result.rowcount if hasattr(result, "rowcount") else 0
+    if count > 0:
+        logger.info(f"[Pipeline] Deactivated {count} untracked stale jobs older than {max_age_days} days.")
     return count
 
 
 def run_ingestion(
     sources: Optional[List[str]] = None,
-    mode: str = "full",
+    mode: str = "fast",
     queries: Optional[List[str]] = None,
     locations: Optional[List[str]] = None,
-    country: Optional[str] = "India",
+    country: str = "india",
 ) -> List[Dict[str, Any]]:
     """
     Main orchestration entrypoint for background or CLI sync.
     Runs collectors, logs ScrapeRun records, and manages the ingestion lock.
-    Supports dynamic queries and locations for live targeted harvesting.
     """
     if not _ingestion_lock.acquire(blocking=False):
         logger.warning("[Pipeline] Ingestion is already running in another thread, skipping.")
@@ -394,22 +410,31 @@ def run_ingestion(
 
         if sources:
             source_set = set(s.strip().lower() for s in sources)
-            if "jobspy" in source_set:
-                collectors_to_run.append(
-                    JobSpyCollector(queries=queries, locations=locations, country_indeed=country)
-                )
             if "ats_direct" in source_set or "ats" in source_set:
                 collectors_to_run.append(ATSCollector())
             if "public_feeds" in source_set or "feeds" in source_set:
                 collectors_to_run.append(PublicFeedsCollector())
-            if "jsonld" in source_set:
-                collectors_to_run.append(JSONLDCollector())
+            if "workday" in source_set:
+                try:
+                    from app.collectors.workday_collector import WorkdayCollector
+                    collectors_to_run.append(WorkdayCollector())
+                except ImportError:
+                    pass
             if "optional_apis" in source_set or "apis" in source_set:
                 collectors_to_run.append(OptionalAPIsCollector())
+            if "jsonld" in source_set:
+                collectors_to_run.append(JSONLDCollector())
+            if "jobspy" in source_set:
+                collectors_to_run.append(
+                    JobSpyCollector(queries=queries, locations=locations, country_indeed=country)
+                )
         else:
-            # Mode fast: ATS + Public Feeds + Optional APIs + JSON-LD
-            # Mode full: includes JobSpy with dynamic or configured queries
             collectors_to_run.append(ATSCollector())
+            try:
+                from app.collectors.workday_collector import WorkdayCollector
+                collectors_to_run.append(WorkdayCollector())
+            except ImportError:
+                pass
             collectors_to_run.append(PublicFeedsCollector())
             collectors_to_run.append(OptionalAPIsCollector())
             collectors_to_run.append(JSONLDCollector())
@@ -431,7 +456,7 @@ def run_ingestion(
             try:
                 logger.info(f"[Pipeline] Executing collector '{collector.name}'...")
                 raw_jobs = collector.collect()
-                found, new, merged = process_raw_jobs(db, raw_jobs, collector.name)
+                found, new, merged = process_raw_jobs(None, raw_jobs, collector.name)
 
                 scrape_run.jobs_found = found
                 scrape_run.new_jobs = new
@@ -461,9 +486,8 @@ def run_ingestion(
                     "error": str(e),
                 })
 
-        # Automatically mark jobs older than 30 days without updates as expired/inactive
         try:
-            deactivate_expired_jobs(db, max_age_days=30)
+            deactivate_expired_jobs(db, max_age_days=14)
         except Exception as exp_err:
             logger.warning(f"[Pipeline] Stale job expiration check failed: {exp_err}")
 

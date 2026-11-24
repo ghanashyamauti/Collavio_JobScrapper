@@ -140,6 +140,8 @@ def test_api_endpoints_and_tracking(monkeypatch):
         salary_min=160000.0,
         salary_max=210000.0,
         currency="USD",
+        min_exp=2.0,
+        max_exp=5.0,
     )
     process_raw_jobs(db, [seed_job], "ats_direct")
     job_id = db.query(Job).first().id
@@ -153,6 +155,15 @@ def test_api_endpoints_and_tracking(monkeypatch):
     assert jobs_data["jobs"][0]["company"] == "Linear"
     assert len(jobs_data["jobs"][0]["sources"]) == 1
     assert jobs_data["jobs"][0]["sources"][0]["source_name"] == "ashby"
+
+    # 3b. Test multi-token search and exp_years filter
+    search_resp = client.get("/api/jobs?q=Full+Stack")
+    assert search_resp.status_code == 200
+    assert search_resp.json()["total"] == 1
+
+    exp_resp = client.get("/api/jobs?exp_years=4")
+    assert exp_resp.status_code == 200
+    assert exp_resp.json()["total"] == 1
 
     # 4. GET /api/jobs/{id}
     single_resp = client.get(f"/api/jobs/{job_id}")
@@ -179,6 +190,26 @@ def test_api_endpoints_and_tracking(monkeypatch):
     assert f_data["kpis"]["saved_jobs"] == 1
     assert f_data["kpis"]["applied_jobs"] == 1
     assert f_data["kpis"]["active_sources"] == 1
+
+    # 6b. GET /api/stats (Dedicated KPI endpoint)
+    stats_resp = client.get("/api/stats")
+    assert stats_resp.status_code == 200
+    stats_data = stats_resp.json()
+    assert stats_data["total_jobs"] == 1
+    assert stats_data["applied_jobs"] == 1
+
+    # 6c. Universal Dynamic Cross-Faceting on /api/filters
+    # exp_years=4 should find Linear in companies
+    f_exp4 = client.get("/api/filters?exp_years=4")
+    assert f_exp4.status_code == 200
+    companies_exp4 = [c["name"] for c in f_exp4.json()["companies"]]
+    assert "Linear" in companies_exp4
+
+    # exp_years=10 should exclude Linear (strict non-zero rule)
+    f_exp10 = client.get("/api/filters?exp_years=10")
+    assert f_exp10.status_code == 200
+    companies_exp10 = [c["name"] for c in f_exp10.json()["companies"]]
+    assert "Linear" not in companies_exp10
 
     # 7. GET /api/sync/status
     sync_status = client.get("/api/sync/status")
