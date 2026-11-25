@@ -1,8 +1,12 @@
-name: JobPulse 6-Hour Scheduled Job Aggregator
+name: Collavio Jobs 6-Hour Scheduled Job Aggregator
 
 on:
   schedule:
     - cron: '0 */6 * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-jobs.yml'
   workflow_dispatch:
     inputs:
       mode:
@@ -21,7 +25,7 @@ on:
 
 jobs:
   sync:
-    name: Run JobPulse Aggregator
+    name: Run Collavio Jobs Aggregator
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -39,6 +43,13 @@ jobs:
           cd backend
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Run Backend Test Suite
+        working-directory: backend
+        env:
+          FALLBACK_SQLITE_FOR_LOCAL_DEV: true
+        run: |
+          python -m pytest tests -v
 
       - name: Execute Collector Pipeline
         working-directory: backend
@@ -63,6 +74,18 @@ jobs:
           JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
           RAPIDAPI_JSEARCH_KEY: ${{ secrets.RAPIDAPI_JSEARCH_KEY }}
         run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "::warning::DATABASE_URL secret is not configured in GitHub Repository Secrets. Skipping Neon PostgreSQL sync."
+            {
+              echo "### ⚠️ Scheduled Cloud DB Sync Skipped"
+              echo ""
+              echo "Backend tests passed, but \`DATABASE_URL\` is not configured in **Settings → Secrets and variables → Actions**."
+              echo ""
+              echo "To enable automated 6-hour live job syncing into Neon PostgreSQL from GitHub Actions, add a repository secret named \`DATABASE_URL\` with your PostgreSQL connection string."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           if [ -n "${{ inputs.sources }}" ]; then
             python -m app.cli --sources "${{ inputs.sources }}"
           else

@@ -40,7 +40,7 @@ class JSONLDCollector(BaseCollector):
 
         jobs: List[RawJob] = []
         headers = {
-            "User-Agent": "JobPulse/1.0 (+https://github.com/jobpulse/aggregator)",
+            "User-Agent": "CollavioJobs/1.0 (+https://github.com/ghanashyamauti/Collavio_JobScrapper)",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
 

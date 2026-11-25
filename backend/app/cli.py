@@ -97,7 +97,7 @@ def main():
     parser.add_argument(
         "--sources",
         type=str,
-        default="ats_direct,public_feeds,workday",
+        default=None,
         help="Comma-separated list of sources to run: ats_direct, public_feeds, workday, optional_apis, jobspy",
     )
     parser.add_argument(
@@ -119,8 +119,8 @@ def main():
         print_database_stats()
         return
 
-    source_list = [s.strip() for s in args.sources.split(",") if s.strip()]
-    logger.info(f"Starting ingestion with sources: {source_list} (mode={args.mode})")
+    source_list = [s.strip() for s in args.sources.split(",") if s.strip()] if args.sources else None
+    logger.info(f"Starting ingestion with sources: {source_list or 'auto'} (mode={args.mode})")
 
     results = run_ingestion(sources=source_list, mode=args.mode)
     logger.info(f"Ingestion completed. Summary: {results}")

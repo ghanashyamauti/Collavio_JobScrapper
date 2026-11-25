@@ -19,7 +19,7 @@ def harvest_india_ats():
     lever_slugs = ["mindtickle"]
 
     raw_jobs = []
-    headers = {"User-Agent": "JobPulse/1.0", "Accept": "application/json"}
+    headers = {"User-Agent": "CollavioJobs/1.0", "Accept": "application/json"}
 
     with httpx.Client(timeout=10.0, follow_redirects=True, headers=headers) as client:
         # Greenhouse

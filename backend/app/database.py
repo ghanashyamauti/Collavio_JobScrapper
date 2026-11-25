@@ -16,15 +16,22 @@ def normalize_db_url(raw_url: str) -> tuple[str, str]:
     """
     is_placeholder = (
         not raw_url
+        or not raw_url.strip()
         or "<YOUR_NEON_OR_SUPABASE_URL>" in raw_url
         or "USER:PASSWORD" in raw_url
     )
 
-    if settings.FALLBACK_SQLITE_FOR_LOCAL_DEV and is_placeholder:
-        # SQLite fallback for local verification
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        db_path = os.path.join(base_dir, "jobpulse_local.db").replace("\\", "/")
-        return f"sqlite:///{db_path}", "sqlite_fallback"
+    if is_placeholder:
+        if settings.FALLBACK_SQLITE_FOR_LOCAL_DEV:
+            # SQLite fallback for local verification
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            db_path = os.path.join(base_dir, "collavio_local.db").replace("\\", "/")
+            return f"sqlite:///{db_path}", "sqlite_fallback"
+        raise RuntimeError(
+            "DATABASE_URL is missing or uses a placeholder value while "
+            "FALLBACK_SQLITE_FOR_LOCAL_DEV=false. Set a valid PostgreSQL DATABASE_URL "
+            "in backend/.env or GitHub Repository Secrets."
+        )
 
     url = raw_url.strip()
 

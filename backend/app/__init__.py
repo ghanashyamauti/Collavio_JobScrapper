@@ -1,1 +1,1 @@
-# JobPulse Backend Package
+# Collavio Jobs Backend Package

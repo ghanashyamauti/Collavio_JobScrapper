@@ -36,7 +36,7 @@ from app.normalizer import clean_html_description
 from app.pipeline import run_ingestion, get_sync_telemetry, deactivate_expired_jobs, process_raw_jobs
 from app.collectors.ats_collector import ATSCollector
 
-logger = logging.getLogger("jobpulse")
+logger = logging.getLogger("collavio")
 logging.basicConfig(level=logging.INFO)
 
 scheduler = BackgroundScheduler()
@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI):
                 scheduled_sync_job,
                 "interval",
                 hours=settings.SYNC_INTERVAL_HOURS,
-                id="jobpulse_scheduled_sync",
+                id="collavio_scheduled_sync",
                 replace_existing=True,
             )
             scheduler.start()
